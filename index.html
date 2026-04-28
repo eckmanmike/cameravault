@@ -622,11 +622,14 @@ function startRecording() {
     recognition = new SR();
     recognition.continuous=true; recognition.interimResults=true; recognition.lang='en-US';
     let final='';
+    let lastResultIndex=0;
     recognition.onresult = ev => {
       let interim='';
       for (let i=ev.resultIndex;i<ev.results.length;i++) {
         const t=ev.results[i][0].transcript;
-        if(ev.results[i].isFinal) final+=t+' '; else interim=t;
+        if(ev.results[i].isFinal) {
+          if(i>=lastResultIndex){ final+=t+' '; lastResultIndex=i+1; }
+        } else { interim=t; }
       }
       const box=document.getElementById('transcript-box');
       box.textContent=final+interim; box.classList.toggle('has-text',!!(final+interim));
