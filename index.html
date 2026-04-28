@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1a1a1a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CameraVault" />
+  <link rel="manifest" href="manifest.json" />
+  <title>CameraVault</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:#111010;--bg2:#1c1b1b;--bg3:#252424;--bg4:#2e2d2d;
+      --gold:#c9a84c;--gold2:#e8c97a;--gold-dim:rgba(201,168,76,0.15);
+      --text:#f0ece3;--text2:#a09a90;--text3:#6b6560;
+      --red:#c0392b;--green:#2ecc71;
+      --radius:14px;--radius-sm:8px;
+      --safe-top:env(safe-area-inset-top,0px);
+      --safe-bottom:env(safe-area-inset-bottom,0px);
+    }
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;line-height:1.5;overflow:hidden}
+    .screen{position:absolute;inset:0;display:none;flex-direction:column;overflow:hidden}
+    .screen.active{display:flex}
+    .topbar{padding:calc(var(--safe-top) + 16px) 20px 14px;background:var(--bg);border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
+    .topbar-logo{font-family:'Playfair Display',serif;font-size:22px;color:var(--gold);letter-spacing:.5px}
+    .topbar-sub{font-size:12px;color:var(--text3);margin-top:1px}
+    .topbar-right{margin-left:auto;display:flex;gap:10px;align-items:center}
+    .icon-btn{width:38px;height:38px;background:var(--bg3);border:1px solid rgba(255,255,255,.07);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;color:var(--text2);transition:background .15s}
+    .icon-btn:active{background:var(--bg4)}
+    /* sync indicator */
+    .sync-dot{width:8px;height:8px;border-radius:50%;background:var(--text3);transition:background .3s;flex-shrink:0}
+    .sync-dot.synced{background:var(--green)}
+    .sync-dot.syncing{background:var(--gold);animation:blink .8s infinite}
+    .sync-dot.error{background:var(--red)}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    /* setup banner */
+    .setup-banner{background:rgba(201,168,76,.08);border-bottom:1px solid rgba(201,168,76,.2);padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;flex-shrink:0}
+    .setup-banner-text{font-size:12px;color:var(--gold);flex:1}
+    .setup-banner-arrow{font-size:14px;color:var(--gold)}
+    /* gallery */
+    .gallery-scroll{flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch}
+    .gallery-stats{font-size:12px;color:var(--text3);margin-bottom:14px;padding-left:2px}
+    .gallery-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+    .camera-card{background:var(--bg2);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:transform .15s,border-color .15s;position:relative}
+    .camera-card:active{transform:scale(.97)}
+    .camera-card:hover{border-color:rgba(201,168,76,.3)}
+    .card-img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--bg3);display:block}
+    .card-img-placeholder{width:100%;aspect-ratio:4/3;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:36px;color:var(--text3)}
+    .card-body{padding:10px 12px 12px}
+    .card-make{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--gold);margin-bottom:2px}
+    .card-model{font-family:'Playfair Display',serif;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .card-year{font-size:12px;color:var(--text3);margin-top:2px}
+    .card-condition{position:absolute;top:8px;right:8px;font-size:10px;padding:3px 7px;border-radius:20px;font-weight:500}
+    .cond-mint{background:rgba(46,204,113,.2);color:#2ecc71}
+    .cond-good{background:rgba(52,152,219,.2);color:#3498db}
+    .cond-fair{background:rgba(241,196,15,.2);color:#f1c40f}
+    .cond-poor{background:rgba(192,57,43,.2);color:#e74c3c}
+    .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;padding:40px 20px;text-align:center}
+    .empty-icon{font-size:64px;opacity:.3}
+    .empty-title{font-family:'Playfair Display',serif;font-size:22px;color:var(--text2)}
+    .empty-sub{font-size:14px;color:var(--text3);max-width:240px}
+    .fab{position:absolute;bottom:calc(var(--safe-bottom) + 24px);right:24px;width:60px;height:60px;background:var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;color:#111;cursor:pointer;box-shadow:0 4px 20px rgba(201,168,76,.4);transition:transform .15s;z-index:20;border:none}
+    .fab:active{transform:scale(.93)}
+    /* add screen */
+    .add-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px}
+    .section-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:10px}
+    .section-block{margin-bottom:24px}
+    .photo-zone{width:100%;aspect-ratio:4/3;background:var(--bg3);border-radius:var(--radius);border:1.5px dashed rgba(201,168,76,.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer;overflow:hidden;position:relative}
+    .photo-zone-label{font-size:13px;color:var(--text3)}
+    .photo-zone-icon{font-size:36px;opacity:.5}
+    .photo-overlay-btn{position:absolute;bottom:10px;right:10px;background:rgba(17,16,16,.75);border:1px solid rgba(255,255,255,.1);color:var(--text);font-size:12px;padding:6px 12px;border-radius:20px;cursor:pointer}
+    #photo-input{display:none}
+    .voice-zone{background:var(--bg3);border-radius:var(--radius);border:1px solid rgba(255,255,255,.06);padding:16px;display:flex;flex-direction:column;gap:12px}
+    .voice-controls{display:flex;gap:10px;align-items:center}
+    .record-btn{width:48px;height:48px;border-radius:50%;background:var(--gold-dim);border:1.5px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all .15s;flex-shrink:0}
+    .record-btn.recording{background:rgba(192,57,43,.2);border-color:var(--red);animation:pulse 1.2s infinite}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.4)}50%{box-shadow:0 0 0 8px rgba(192,57,43,0)}}
+    .voice-status{flex:1;font-size:13px;color:var(--text2)}
+    .voice-timer{font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums}
+    .transcript-box{min-height:60px;background:var(--bg2);border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;color:var(--text2);line-height:1.6;border:1px solid rgba(255,255,255,.05)}
+    .transcript-box.has-text{color:var(--text)}
+    .field{margin-bottom:14px}
+    .field label{display:block;font-size:12px;color:var(--text3);margin-bottom:5px}
+    .field input,.field select,.field textarea{width:100%;background:var(--bg3);border:1px solid rgba(255,255,255,.08);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;padding:10px 12px;outline:none;transition:border-color .15s}
+    .field input:focus,.field select:focus,.field textarea:focus{border-color:rgba(201,168,76,.5)}
+    .field select option{background:#2e2d2d}
+    .field textarea{resize:vertical;min-height:70px}
+    .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .save-btn{width:100%;padding:15px;background:var(--gold);color:#111;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:500;border:none;border-radius:var(--radius);cursor:pointer;margin-top:8px;margin-bottom:calc(var(--safe-bottom) + 16px);transition:opacity .15s}
+    .save-btn:active{opacity:.85}
+    /* detail */
+    .detail-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+    .detail-hero{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--bg3);display:block}
+    .detail-hero-placeholder{width:100%;aspect-ratio:4/3;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:72px;color:var(--text3)}
+    .detail-body{padding:20px}
+    .detail-make{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:4px}
+    .detail-model{font-family:'Playfair Display',serif;font-size:28px;color:var(--text);line-height:1.2;margin-bottom:6px}
+    .detail-meta{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+    .detail-pill{font-size:12px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid rgba(255,255,255,.07)}
+    .detail-section{margin-bottom:20px}
+    .detail-section-title{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.05)}
+    .detail-row{display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.03);gap:16px}
+    .detail-row:last-child{border-bottom:none}
+    .detail-row-label{font-size:13px;color:var(--text3);flex-shrink:0}
+    .detail-row-value{font-size:13px;color:var(--text);text-align:right}
+    .detail-notes{background:var(--bg2);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--text2);line-height:1.7;border:1px solid rgba(255,255,255,.05)}
+    .detail-actions{display:flex;gap:10px;margin-top:10px;padding-bottom:calc(var(--safe-bottom) + 20px)}
+    .action-btn{flex:1;padding:13px;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:opacity .15s}
+    .action-btn:active{opacity:.8}
+    .btn-edit{background:var(--bg3);color:var(--text);border:1px solid rgba(255,255,255,.1)}
+    .btn-delete{background:rgba(192,57,43,.15);color:#e74c3c;border:1px solid rgba(192,57,43,.2)}
+    /* setup screen */
+    .setup-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:24px 20px}
+    .setup-title{font-family:'Playfair Display',serif;font-size:24px;color:var(--text);margin-bottom:8px}
+    .setup-sub{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:28px}
+    .setup-step{display:flex;gap:14px;margin-bottom:20px;align-items:flex-start}
+    .step-num{width:28px;height:28px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+    .step-body{}
+    .step-title{font-size:14px;font-weight:500;color:var(--text);margin-bottom:3px}
+    .step-desc{font-size:13px;color:var(--text3);line-height:1.6}
+    .step-link{color:var(--gold);text-decoration:none;word-break:break-all}
+    .config-field{margin-bottom:12px}
+    .config-field label{display:block;font-size:12px;color:var(--text3);margin-bottom:4px}
+    .config-field input{width:100%;background:var(--bg3);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius-sm);color:var(--text);font-family:monospace;font-size:12px;padding:10px 12px;outline:none}
+    .config-field input:focus{border-color:rgba(201,168,76,.5)}
+    .connect-btn{width:100%;padding:14px;background:var(--gold);color:#111;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:500;border:none;border-radius:var(--radius);cursor:pointer;margin-top:4px}
+    .skip-btn{width:100%;padding:12px;background:transparent;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:14px;border:1px solid rgba(255,255,255,.08);border-radius:var(--radius);cursor:pointer;margin-top:10px;margin-bottom:40px}
+    /* search */
+    .search-wrap{padding:10px 16px;background:var(--bg);border-bottom:1px solid rgba(255,255,255,.05)}
+    .search-input{width:100%;background:var(--bg3);border:1px solid rgba(255,255,255,.08);border-radius:20px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;padding:9px 16px;outline:none}
+    .search-input::placeholder{color:var(--text3)}
+    .waveform{height:32px;display:flex;align-items:center;gap:3px}
+    .wave-bar{width:3px;background:var(--gold);border-radius:2px;opacity:.6;height:4px;transition:height .1s}
+    .back-btn{font-size:22px;cursor:pointer;color:var(--text2);padding:4px;line-height:1}
+    .back-btn:active{color:var(--gold)}
+    .toast{position:fixed;bottom:calc(var(--safe-bottom) + 100px);left:50%;transform:translateX(-50%) translateY(20px);background:var(--bg4);color:var(--text);font-size:13px;padding:10px 18px;border-radius:20px;z-index:100;opacity:0;transition:opacity .2s,transform .2s;border:1px solid rgba(255,255,255,.1);white-space:nowrap;pointer-events:none}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    ::-webkit-scrollbar{width:0}
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════ GALLERY ═══════════════ -->
+<div class="screen active" id="screen-gallery">
+  <div class="topbar">
+    <div>
+      <div class="topbar-logo">📷 CameraVault</div>
+      <div class="topbar-sub">Film Camera Collection</div>
+    </div>
+    <div class="topbar-right">
+      <div class="sync-dot" id="sync-dot" title="Sync status"></div>
+      <div class="icon-btn" id="btn-search-toggle">🔍</div>
+      <div class="icon-btn" id="btn-export">📤</div>
+      <div class="icon-btn" id="btn-settings">⚙️</div>
+    </div>
+  </div>
+  <div id="setup-banner" class="setup-banner" style="display:none" onclick="showScreen('screen-setup')">
+    <span class="setup-banner-text">☁️ Tap to set up cloud sync with your PC</span>
+    <span class="setup-banner-arrow">›</span>
+  </div>
+  <div class="search-wrap" id="search-wrap" style="display:none">
+    <input class="search-input" id="search-input" placeholder="Search make, model, year…" autocomplete="off" />
+  </div>
+  <div class="gallery-scroll" id="gallery-scroll" style="display:none">
+    <div class="gallery-stats" id="gallery-stats"></div>
+    <div class="gallery-grid" id="gallery-grid"></div>
+  </div>
+  <div class="empty-state" id="empty-state" style="display:none">
+    <div class="empty-icon">📷</div>
+    <div class="empty-title" id="empty-title">No cameras yet</div>
+    <div class="empty-sub" id="empty-sub">Tap the + button to add your first camera</div>
+  </div>
+  <button class="fab" id="btn-add">+</button>
+</div>
+
+<!-- ═══════════════ SETUP ═══════════════ -->
+<div class="screen" id="screen-setup">
+  <div class="topbar">
+    <div class="back-btn" id="btn-setup-back">←</div>
+    <div><div class="topbar-logo">Cloud Sync Setup</div></div>
+  </div>
+  <div class="setup-scroll">
+    <div class="setup-title">Connect to Firebase</div>
+    <div class="setup-sub">Firebase is Google's free cloud database. Once connected, your PC web app and this phone app will share the same live database — changes on one appear instantly on the other.</div>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-title">Create a free Firebase project</div>
+        <div class="step-desc">Go to <a class="step-link" href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a>, sign in with Google, click <strong>Add project</strong>, name it "CameraVault", and follow the prompts. Disable Google Analytics when asked.</div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">Enable Realtime Database</div>
+        <div class="step-desc">In the left sidebar click <strong>Build → Realtime Database → Create Database</strong>. Choose your nearest region. When asked about rules, choose <strong>Start in test mode</strong> (you can lock it down later).</div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">Get your Web App config</div>
+        <div class="step-desc">Go to <strong>Project Settings → Your apps → Add app → Web (&lt;/&gt;)</strong>. Register the app and copy the <code style="color:var(--gold)">firebaseConfig</code> object shown. You need the values below.</div>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-title">Paste your config values</div>
+        <div class="step-desc">Fill in the fields below and tap Connect.</div>
+      </div>
+    </div>
+
+    <div class="config-field"><label>API Key</label><input id="cfg-apiKey" placeholder="AIzaSy…" autocomplete="off" /></div>
+    <div class="config-field"><label>Auth Domain</label><input id="cfg-authDomain" placeholder="your-project.firebaseapp.com" autocomplete="off" /></div>
+    <div class="config-field"><label>Database URL</label><input id="cfg-dbURL" placeholder="https://your-project-default-rtdb.firebaseio.com" autocomplete="off" /></div>
+    <div class="config-field"><label>Project ID</label><input id="cfg-projectId" placeholder="your-project-id" autocomplete="off" /></div>
+    <div class="config-field"><label>Storage Bucket</label><input id="cfg-storageBucket" placeholder="your-project.appspot.com" autocomplete="off" /></div>
+    <div class="config-field"><label>Messaging Sender ID</label><input id="cfg-messagingSenderId" placeholder="123456789" autocomplete="off" /></div>
+    <div class="config-field"><label>App ID</label><input id="cfg-appId" placeholder="1:123…" autocomplete="off" /></div>
+
+    <button class="connect-btn" onclick="connectFirebase()">Connect & Sync ☁️</button>
+    <button class="skip-btn" onclick="showScreen('screen-gallery')">Use offline only</button>
+  </div>
+</div>
+
+<!-- ═══════════════ ADD / EDIT ═══════════════ -->
+<div class="screen" id="screen-add">
+  <div class="topbar">
+    <div class="back-btn" id="btn-add-back">←</div>
+    <div style="flex:1"><div class="topbar-logo" id="add-title">Add Camera</div></div>
+  </div>
+  <div class="add-scroll">
+    <div class="section-block">
+      <div class="section-label">Photo</div>
+      <div class="photo-zone" id="photo-zone" onclick="document.getElementById('photo-input').click()">
+        <div class="photo-zone-icon">📸</div>
+        <div class="photo-zone-label">Tap to take or choose photo</div>
+      </div>
+      <input type="file" id="photo-input" accept="image/*" capture="environment" />
+    </div>
+    <div class="section-block">
+      <div class="section-label">Voice Description</div>
+      <div class="voice-zone">
+        <div class="voice-controls">
+          <div class="record-btn" id="record-btn">🎙️</div>
+          <div style="flex:1">
+            <div class="voice-status" id="voice-status">Tap to record a description</div>
+            <div class="waveform" id="waveform" style="display:none"></div>
+          </div>
+          <div class="voice-timer" id="voice-timer"></div>
+        </div>
+        <div class="transcript-box" id="transcript-box">Transcription will appear here…</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="applyTranscript()" style="flex:1;background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);font-size:13px;padding:8px;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit">Apply to fields ↓</button>
+          <button onclick="clearTranscript()" style="background:var(--bg2);border:1px solid rgba(255,255,255,.07);color:var(--text3);font-size:13px;padding:8px 14px;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit">Clear</button>
+        </div>
+      </div>
+    </div>
+    <div class="section-block">
+      <div class="section-label">Camera Details</div>
+      <div class="field"><label>Make / Manufacturer *</label><input type="text" id="f-make" placeholder="e.g. Leica, Nikon, Canon" autocomplete="off" /></div>
+      <div class="field"><label>Model *</label><input type="text" id="f-model" placeholder="e.g. M6, F3, AE-1" autocomplete="off" /></div>
+      <div class="field-row">
+        <div class="field"><label>Year</label><input type="number" id="f-year" placeholder="e.g. 1978" min="1850" max="2010" autocomplete="off" /></div>
+        <div class="field"><label>Condition</label>
+          <select id="f-condition"><option value="">Select…</option><option>Mint</option><option>Good</option><option>Fair</option><option>Poor</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="section-block">
+      <div class="section-label">Additional Info</div>
+      <div class="field-row">
+        <div class="field"><label>Film Format</label>
+          <select id="f-format"><option value="">Select…</option><option value="35mm">35mm</option><option value="Medium Format 120">120 (Medium Format)</option><option value="4x5 Large Format">4×5 Large Format</option><option value="8x10 Large Format">8×10 Large Format</option><option value="110">110</option><option value="126">126</option><option value="127">127</option><option value="APS">APS</option><option value="Polaroid">Polaroid / Instant</option><option value="Other">Other</option></select>
+        </div>
+        <div class="field"><label>Camera Type</label>
+          <select id="f-type"><option value="">Select…</option><option value="SLR">SLR</option><option value="Rangefinder">Rangefinder</option><option value="TLR">TLR</option><option value="Point & Shoot">Point & Shoot</option><option value="Folding">Folding</option><option value="Box">Box Camera</option><option value="View Camera">View Camera</option><option value="Toy">Toy / Lomography</option><option value="Other">Other</option></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Serial Number</label><input type="text" id="f-serial" placeholder="optional" autocomplete="off" /></div>
+        <div class="field"><label>Est. Value ($)</label><input type="number" id="f-value" placeholder="optional" min="0" autocomplete="off" /></div>
+      </div>
+      <div class="field"><label>Lens / Kit</label><input type="text" id="f-lens" placeholder="e.g. 50mm f/1.4 Summilux" autocomplete="off" /></div>
+      <div class="field"><label>Notes</label><textarea id="f-notes" placeholder="Provenance, quirks, history, repairs…"></textarea></div>
+    </div>
+    <button class="save-btn" onclick="saveCamera()">Save Camera</button>
+  </div>
+</div>
+
+<!-- ═══════════════ DETAIL ═══════════════ -->
+<div class="screen" id="screen-detail">
+  <div class="topbar">
+    <div class="back-btn" id="btn-detail-back">←</div>
+    <div style="flex:1"><div class="topbar-logo">Camera Details</div></div>
+  </div>
+  <div class="detail-scroll" id="detail-scroll"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script>
+// ═══════════════ CONFIG STORAGE ═══════════════
+const CFG_KEY = 'cv_firebase_cfg';
+const DB_KEY  = 'cameravault_v1';
+
+function loadCfg() { try { return JSON.parse(localStorage.getItem(CFG_KEY)); } catch { return null; } }
+function saveCfg(c) { localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
+function loadLocalDB() { try { return JSON.parse(localStorage.getItem(DB_KEY)) || []; } catch { return []; } }
+function saveLocalDB(d) { localStorage.setItem(DB_KEY, JSON.stringify(d)); }
+
+// ═══════════════ STATE ═══════════════
+let cameras = loadLocalDB();
+let editingId = null;
+let currentPhotoData = null;
+let currentTranscript = '';
+let mediaRecorder = null;
+let recognition = null;
+let isRecording = false;
+let recordingInterval = null;
+let recordingSeconds = 0;
+let waveInterval = null;
+let firebaseDb = null;
+let dbRef = null;
+let isSynced = false;
+
+// ═══════════════ SYNC DOT ═══════════════
+function setSyncState(state) {
+  const dot = document.getElementById('sync-dot');
+  dot.className = 'sync-dot ' + state;
+  dot.title = { synced:'Synced with cloud', syncing:'Syncing…', error:'Sync error — offline mode', '':'Not connected' }[state] || '';
+}
+
+// ═══════════════ FIREBASE ═══════════════
+function connectFirebase(cfg) {
+  cfg = cfg || loadCfg();
+  if (!cfg || !cfg.databaseURL) return false;
+  try {
+    // Initialize (may already be initialized)
+    let app;
+    try { app = firebase.app(); }
+    catch { app = firebase.initializeApp(cfg); }
+
+    firebaseDb = firebase.database(app);
+    dbRef = firebaseDb.ref('cameras');
+
+    setSyncState('syncing');
+
+    // Listen for real-time updates from Firebase → local
+    dbRef.on('value', snapshot => {
+      const data = snapshot.val();
+      cameras = data ? Object.values(data) : [];
+      saveLocalDB(cameras);
+      renderGallery();
+      setSyncState('synced');
+      isSynced = true;
+    }, err => {
+      console.error('Firebase read error:', err);
+      setSyncState('error');
+    });
+
+    return true;
+  } catch(e) {
+    console.error('Firebase connect error:', e);
+    setSyncState('error');
+    return false;
+  }
+}
+
+async function pushToFirebase(camera) {
+  if (!dbRef) return;
+  setSyncState('syncing');
+  try {
+    await dbRef.child(camera.id).set(camera);
+    setSyncState('synced');
+  } catch(e) {
+    setSyncState('error');
+    showToast('Sync failed — saved locally');
+  }
+}
+
+async function deleteFromFirebase(id) {
+  if (!dbRef) return;
+  setSyncState('syncing');
+  try {
+    await dbRef.child(id).remove();
+    setSyncState('synced');
+  } catch(e) {
+    setSyncState('error');
+    showToast('Sync failed — deleted locally');
+  }
+}
+
+function connectFirebaseFromSetup() {
+  const cfg = {
+    apiKey: document.getElementById('cfg-apiKey').value.trim(),
+    authDomain: document.getElementById('cfg-authDomain').value.trim(),
+    databaseURL: document.getElementById('cfg-dbURL').value.trim(),
+    projectId: document.getElementById('cfg-projectId').value.trim(),
+    storageBucket: document.getElementById('cfg-storageBucket').value.trim(),
+    messagingSenderId: document.getElementById('cfg-messagingSenderId').value.trim(),
+    appId: document.getElementById('cfg-appId').value.trim(),
+  };
+  if (!cfg.apiKey || !cfg.databaseURL) { showToast('Please fill in API Key and Database URL'); return; }
+  saveCfg(cfg);
+  const ok = connectFirebase(cfg);
+  if (ok) {
+    // Upload existing local cameras to Firebase
+    cameras.forEach(cam => dbRef.child(cam.id).set(cam));
+    showToast('Connected! Syncing…');
+    showScreen('screen-gallery');
+  } else {
+    showToast('Connection failed — check your config');
+  }
+}
+
+// ═══════════════ NAVIGATION ═══════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ═══════════════ GALLERY ═══════════════
+function renderGallery(filter = '') {
+  const grid = document.getElementById('gallery-grid');
+  const empty = document.getElementById('empty-state');
+  const scroll = document.getElementById('gallery-scroll');
+  const stats = document.getElementById('gallery-stats');
+
+  const filtered = filter
+    ? cameras.filter(c => {
+        const q = filter.toLowerCase();
+        return ['make','model','year','type','format'].some(k => (c[k]||'').toString().toLowerCase().includes(q));
+      })
+    : cameras;
+
+  const total = cameras.length;
+
+  if (total === 0 || filtered.length === 0) {
+    scroll.style.display = 'none';
+    empty.style.display = 'flex';
+    document.getElementById('empty-title').textContent = total === 0 ? 'No cameras yet' : 'No results';
+    document.getElementById('empty-sub').textContent = total === 0 ? 'Tap + to add your first camera' : 'Try a different search term';
+    return;
+  }
+
+  empty.style.display = 'none';
+  scroll.style.display = 'block';
+  stats.textContent = `${filtered.length} camera${filtered.length !== 1 ? 's' : ''}${filter ? ' found' : ' in collection'}`;
+
+  grid.innerHTML = filtered.slice().sort((a,b) => (b.added||0) - (a.added||0)).map(cam => {
+    const cc = {Mint:'cond-mint',Good:'cond-good',Fair:'cond-fair',Poor:'cond-poor'}[cam.condition] || '';
+    const img = cam.photo
+      ? `<img class="card-img" src="${cam.photo}" alt="${cam.model}" loading="lazy"/>`
+      : `<div class="card-img-placeholder">📷</div>`;
+    return `<div class="camera-card" onclick="openDetail('${cam.id}')">
+      ${img}
+      ${cam.condition ? `<div class="card-condition ${cc}">${cam.condition}</div>` : ''}
+      <div class="card-body">
+        <div class="card-make">${cam.make||'Unknown Make'}</div>
+        <div class="card-model">${cam.model||'Unknown Model'}</div>
+        <div class="card-year">${cam.year||''}${cam.format?(cam.year?' · ':'')+cam.format:''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════ DETAIL ═══════════════
+function openDetail(id) {
+  const cam = cameras.find(c => c.id === id);
+  if (!cam) return;
+  const cc = {Mint:'cond-mint',Good:'cond-good',Fair:'cond-fair',Poor:'cond-poor'}[cam.condition]||'';
+  const img = cam.photo
+    ? `<img class="detail-hero" src="${cam.photo}" alt="${cam.model}"/>`
+    : `<div class="detail-hero-placeholder">📷</div>`;
+  const rows = [
+    ['Type',cam.type],['Film Format',cam.format],['Year',cam.year],
+    ['Serial #',cam.serial],['Lens / Kit',cam.lens],
+    ['Est. Value',cam.value?`$${Number(cam.value).toLocaleString()}`:''],
+    ['Added',new Date(cam.added).toLocaleDateString()],
+  ].filter(r=>r[1]);
+
+  document.getElementById('detail-scroll').innerHTML = `
+    ${img}
+    <div class="detail-body">
+      <div class="detail-make">${cam.make||'Unknown Make'}</div>
+      <div class="detail-model">${cam.model||'Unknown Model'}</div>
+      <div class="detail-meta">
+        ${cam.condition?`<span class="card-condition ${cc}" style="position:static">${cam.condition}</span>`:''}
+        ${cam.year?`<span class="detail-pill">${cam.year}</span>`:''}
+        ${cam.format?`<span class="detail-pill">${cam.format}</span>`:''}
+      </div>
+      ${rows.length?`<div class="detail-section"><div class="detail-section-title">Specifications</div>${rows.map(r=>`<div class="detail-row"><div class="detail-row-label">${r[0]}</div><div class="detail-row-value">${r[1]}</div></div>`).join('')}</div>`:''}
+      ${cam.notes?`<div class="detail-section"><div class="detail-section-title">Notes</div><div class="detail-notes">${cam.notes}</div></div>`:''}
+      <div class="detail-actions">
+        <button class="action-btn btn-edit" onclick="editCamera('${cam.id}')">✏️ Edit</button>
+        <button class="action-btn btn-delete" onclick="deleteCamera('${cam.id}')">🗑 Delete</button>
+      </div>
+    </div>`;
+  showScreen('screen-detail');
+}
+
+function editCamera(id) {
+  const cam = cameras.find(c => c.id === id);
+  if (!cam) return;
+  editingId = id; currentPhotoData = cam.photo||null; currentTranscript='';
+  document.getElementById('add-title').textContent = 'Edit Camera';
+  ['make','model','year','condition','format','type','serial','value','lens','notes'].forEach(k => {
+    document.getElementById('f-'+k).value = cam[k]||'';
+  });
+  updatePhotoZone();
+  resetTranscriptUI();
+  showScreen('screen-add');
+}
+
+function deleteCamera(id) {
+  if (!confirm('Delete this camera from your collection?')) return;
+  cameras = cameras.filter(c => c.id !== id);
+  saveLocalDB(cameras);
+  if (dbRef) deleteFromFirebase(id);
+  renderGallery();
+  showToast('Camera deleted');
+  showScreen('screen-gallery');
+}
+
+// ═══════════════ SAVE ═══════════════
+function openAdd() {
+  editingId = null; currentPhotoData = null; currentTranscript = '';
+  document.getElementById('add-title').textContent = 'Add Camera';
+  ['make','model','year','serial','value','lens','notes'].forEach(k => document.getElementById('f-'+k).value='');
+  ['condition','format','type'].forEach(k => document.getElementById('f-'+k).value='');
+  updatePhotoZone(); resetTranscriptUI(); stopRecording();
+  showScreen('screen-add');
+}
+
+async function saveCamera() {
+  const make = document.getElementById('f-make').value.trim();
+  const model = document.getElementById('f-model').value.trim();
+  if (!make && !model) { showToast('Please add Make or Model'); return; }
+  const cam = {
+    id: editingId || (Date.now().toString(36)+Math.random().toString(36).slice(2)),
+    make, model,
+    year: document.getElementById('f-year').value.trim(),
+    condition: document.getElementById('f-condition').value,
+    format: document.getElementById('f-format').value,
+    type: document.getElementById('f-type').value,
+    serial: document.getElementById('f-serial').value.trim(),
+    value: document.getElementById('f-value').value.trim(),
+    lens: document.getElementById('f-lens').value.trim(),
+    notes: document.getElementById('f-notes').value.trim(),
+    photo: currentPhotoData,
+    added: editingId ? (cameras.find(c=>c.id===editingId)?.added||Date.now()) : Date.now(),
+    updated: Date.now(),
+  };
+  if (editingId) cameras = cameras.map(c=>c.id===editingId?cam:c);
+  else cameras.push(cam);
+  saveLocalDB(cameras);
+  if (dbRef) await pushToFirebase(cam);
+  renderGallery();
+  showToast(editingId?'Camera updated':'Camera added!');
+  stopRecording(); showScreen('screen-gallery');
+}
+
+// ═══════════════ PHOTO ═══════════════
+document.getElementById('photo-input').addEventListener('change', e => {
+  const file = e.target.files[0]; if(!file) return;
+  // Resize before storing to keep Firebase size reasonable
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 800;
+      let {width:w, height:h} = img;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h*(MAX/w)); w = MAX; }
+        else { w = Math.round(w*(MAX/h)); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width=w; canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      currentPhotoData = canvas.toDataURL('image/jpeg', 0.75);
+      updatePhotoZone();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value='';
+});
+
+function updatePhotoZone() {
+  const zone = document.getElementById('photo-zone');
+  if (currentPhotoData) {
+    zone.innerHTML=`<img src="${currentPhotoData}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:var(--radius)"/><div class="photo-overlay-btn" onclick="event.stopPropagation();document.getElementById('photo-input').click()">Change Photo</div>`;
+  } else {
+    zone.innerHTML=`<div class="photo-zone-icon">📸</div><div class="photo-zone-label">Tap to take or choose photo</div>`;
+  }
+}
+
+// ═══════════════ VOICE ═══════════════
+const waveform = document.getElementById('waveform');
+waveform.innerHTML = Array.from({length:18},()=>`<div class="wave-bar"></div>`).join('');
+
+function animateWave() { waveform.querySelectorAll('.wave-bar').forEach(b=>b.style.height=(4+Math.random()*28)+'px'); }
+
+function startRecording() {
+  if (isRecording) { stopRecording(); return; }
+  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  if (SR) {
+    recognition = new SR();
+    recognition.continuous=true; recognition.interimResults=true; recognition.lang='en-US';
+    let final='';
+    recognition.onresult = ev => {
+      let interim='';
+      for (let i=ev.resultIndex;i<ev.results.length;i++) {
+        const t=ev.results[i][0].transcript;
+        if(ev.results[i].isFinal) final+=t+' '; else interim=t;
+      }
+      const box=document.getElementById('transcript-box');
+      box.textContent=final+interim; box.classList.toggle('has-text',!!(final+interim));
+      currentTranscript=final+interim;
+    };
+    recognition.onerror=e=>{ if(e.error!=='aborted') showToast('Mic: '+e.error); stopRecording(); };
+    recognition.onend=()=>{ if(isRecording) stopRecording(); };
+    recognition.start();
+    isRecording=true; setRecordingUI(true); return;
+  }
+  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+    mediaRecorder=new MediaRecorder(stream); mediaRecorder.start();
+    isRecording=true; setRecordingUI(true);
+    document.getElementById('transcript-box').textContent='Recording… type description manually after stopping.';
+  }).catch(()=>showToast('Mic access denied'));
+}
+
+function stopRecording() {
+  if(recognition){try{recognition.stop();}catch(e){} recognition=null;}
+  if(mediaRecorder&&mediaRecorder.state!=='inactive'){mediaRecorder.stop();mediaRecorder.stream.getTracks().forEach(t=>t.stop());mediaRecorder=null;}
+  isRecording=false; setRecordingUI(false);
+}
+
+function setRecordingUI(on) {
+  const btn=document.getElementById('record-btn');
+  btn.classList.toggle('recording',on); btn.textContent=on?'⏹️':'🎙️';
+  waveform.style.display=on?'flex':'none';
+  document.getElementById('voice-status').textContent=on?'Recording… speak your description':'Tap to record a description';
+  document.getElementById('voice-timer').textContent='';
+  if(on){
+    recordingSeconds=0;
+    recordingInterval=setInterval(()=>{
+      recordingSeconds++;
+      const m=Math.floor(recordingSeconds/60),s=recordingSeconds%60;
+      document.getElementById('voice-timer').textContent=`${m}:${s.toString().padStart(2,'0')}`;
+    },1000);
+    waveInterval=setInterval(animateWave,120);
+  } else {
+    clearInterval(recordingInterval); clearInterval(waveInterval);
+    waveform.querySelectorAll('.wave-bar').forEach(b=>b.style.height='4px');
+  }
+}
+
+document.getElementById('record-btn').addEventListener('click',()=>isRecording?stopRecording():startRecording());
+
+function applyTranscript() {
+  const text=currentTranscript||document.getElementById('transcript-box').textContent;
+  if(!text||text.includes('Transcription')){showToast('Nothing to apply yet');return;}
+  const t=text.toLowerCase();
+  const ym=text.match(/\b(19[0-9]{2}|20[0][0-9])\b/);
+  if(ym&&!document.getElementById('f-year').value) document.getElementById('f-year').value=ym[1];
+  if(!document.getElementById('f-condition').value){
+    if(t.includes('mint')) document.getElementById('f-condition').value='Mint';
+    else if(t.includes('excellent')||t.includes('good')) document.getElementById('f-condition').value='Good';
+    else if(t.includes('fair')||t.includes('ok')) document.getElementById('f-condition').value='Fair';
+    else if(t.includes('poor')||t.includes('damage')) document.getElementById('f-condition').value='Poor';
+  }
+  if(!document.getElementById('f-format').value){
+    if(t.includes('medium format')||t.includes('120')) document.getElementById('f-format').value='Medium Format 120';
+    else if(t.includes('35mm')||t.includes('35 mm')) document.getElementById('f-format').value='35mm';
+    else if(t.includes('polaroid')||t.includes('instant')) document.getElementById('f-format').value='Polaroid';
+    else if(t.includes('large format')||t.includes('4x5')) document.getElementById('f-format').value='4x5 Large Format';
+  }
+  if(!document.getElementById('f-type').value){
+    if(t.includes('rangefinder')) document.getElementById('f-type').value='Rangefinder';
+    else if(t.includes('slr')) document.getElementById('f-type').value='SLR';
+    else if(t.includes('tlr')||t.includes('twin lens')) document.getElementById('f-type').value='TLR';
+    else if(t.includes('point and shoot')||t.includes('compact')) document.getElementById('f-type').value='Point & Shoot';
+    else if(t.includes('folding')) document.getElementById('f-type').value='Folding';
+  }
+  if(!document.getElementById('f-notes').value.trim()) document.getElementById('f-notes').value=text.trim();
+  showToast('Applied — check and adjust!');
+}
+
+function clearTranscript() {
+  currentTranscript=''; resetTranscriptUI();
+}
+
+function resetTranscriptUI() {
+  const box=document.getElementById('transcript-box');
+  box.textContent='Transcription will appear here…'; box.classList.remove('has-text');
+}
+
+// ═══════════════ SEARCH ═══════════════
+document.getElementById('btn-search-toggle').addEventListener('click',()=>{
+  const w=document.getElementById('search-wrap');
+  const vis=w.style.display!=='none';
+  w.style.display=vis?'none':'block';
+  if(!vis) document.getElementById('search-input').focus();
+  else { document.getElementById('search-input').value=''; renderGallery(); }
+});
+document.getElementById('search-input').addEventListener('input',e=>renderGallery(e.target.value.trim()));
+
+// ═══════════════ EXPORT CSV ═══════════════
+document.getElementById('btn-export').addEventListener('click',()=>{
+  if(!cameras.length){showToast('No cameras to export');return;}
+  const h=['Make','Model','Year','Condition','Format','Type','Serial','Value','Lens','Notes','Added'];
+  const rows=cameras.map(c=>[c.make,c.model,c.year,c.condition,c.format,c.type,c.serial,c.value,c.lens,(c.notes||'').replace(/\n/g,' '),new Date(c.added).toLocaleDateString()].map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`));
+  const csv=[h,...rows].map(r=>r.join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='cameravault-export.csv';a.click();URL.revokeObjectURL(url);
+  showToast('CSV exported!');
+});
+
+// ═══════════════ NAV EVENTS ═══════════════
+document.getElementById('btn-add').addEventListener('click',openAdd);
+document.getElementById('btn-add-back').addEventListener('click',()=>{ stopRecording(); editingId?openDetail(editingId):showScreen('screen-gallery'); });
+document.getElementById('btn-detail-back').addEventListener('click',()=>showScreen('screen-gallery'));
+document.getElementById('btn-settings').addEventListener('click',()=>{
+  const cfg=loadCfg();
+  if(cfg){ ['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId'].forEach(k=>{ const el=document.getElementById('cfg-'+k); if(el) el.value=cfg[k]||''; }); }
+  showScreen('screen-setup');
+});
+document.getElementById('btn-setup-back').addEventListener('click',()=>showScreen('screen-gallery'));
+document.getElementById('connect-btn-actual') && document.getElementById('connect-btn-actual').addEventListener('click',connectFirebaseFromSetup);
+
+// ═══════════════ TOAST ═══════════════
+let toastTimeout;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ═══════════════ INIT ═══════════════
+// Wire up connect button
+document.querySelector('.connect-btn').onclick=connectFirebaseFromSetup;
+
+const savedCfg=loadCfg();
+if(savedCfg&&savedCfg.databaseURL){
+  connectFirebase(savedCfg);
+  document.getElementById('setup-banner').style.display='none';
+} else {
+  document.getElementById('setup-banner').style.display='flex';
+  setSyncState('');
+}
+
+// Seed demo data if fresh install with no sync
+if(!savedCfg&&!cameras.length){
+  cameras=[
+    {id:'demo1',make:'Leica',model:'M6',year:'1984',condition:'Mint',format:'35mm',type:'Rangefinder',serial:'1654823',value:'2800',lens:'50mm f/1.4 Summilux',notes:'Black chrome finish. Shutter and metering perfect.',photo:null,added:Date.now()-864e5*10,updated:Date.now()},
+    {id:'demo2',make:'Nikon',model:'F3',year:'1980',condition:'Good',format:'35mm',type:'SLR',serial:'2001234',value:'450',lens:'50mm f/1.4 Nikkor AI-s',notes:'Classic professional body. Light seals replaced 2022.',photo:null,added:Date.now()-864e5*5,updated:Date.now()},
+  ];
+  saveLocalDB(cameras);
+}
+renderGallery();
+</script>
+</body>
+</html>
