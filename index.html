@@ -657,7 +657,7 @@ function setRecordingUI(on) {
   const btn=document.getElementById('record-btn');
   btn.classList.toggle('recording',on); btn.textContent=on?'⏹️':'🎙️';
   waveform.style.display=on?'flex':'none';
-  document.getElementById('voice-status').textContent=on?'Recording… speak your description':'Tap to record a description';
+  document.getElementById('voice-status').textContent=on?'e.g. "Make Leica, model M6, 1984, rangefinder, mint"':'Tap to record a description';
   document.getElementById('voice-timer').textContent='';
   if(on){
     recordingSeconds=0;
@@ -679,27 +679,66 @@ function applyTranscript() {
   const text=currentTranscript||document.getElementById('transcript-box').textContent;
   if(!text||text.includes('Transcription')){showToast('Nothing to apply yet');return;}
   const t=text.toLowerCase();
+
+  // ── Make: "make Leica" / "make is Leica" / "made by Leica" / "manufacturer Leica" ──
+  if(!document.getElementById('f-make').value){
+    const m=text.match(/(?:make(?:\s+is)?|made\s+by|manufacturer(?:\s+is)?)\s+([A-Za-z][A-Za-z0-9\-]+)/i);
+    if(m) document.getElementById('f-make').value=m[1].trim();
+  }
+
+  // ── Model: "model M6" / "model is M6" ──
+  if(!document.getElementById('f-model').value){
+    const m=text.match(/model(?:\s+is)?\s+([A-Za-z0-9][\w\-]*(?:\s+[\w\-]+){0,2})/i);
+    if(m) document.getElementById('f-model').value=m[1].trim();
+  }
+
+  // ── "this is a Leica M6" / "it's a Nikon F3" — fills make+model if both still empty ──
+  if(!document.getElementById('f-make').value&&!document.getElementById('f-model').value){
+    const m=text.match(/(?:this\s+is\s+a(?:n)?|it(?:'s|\s+is)\s+a(?:n)?)\s+([A-Za-z][A-Za-z0-9\-]+)\s+([A-Za-z0-9][\w\-]*)/i);
+    if(m){ document.getElementById('f-make').value=m[1].trim(); document.getElementById('f-model').value=m[2].trim(); }
+  }
+
+  // ── Serial: "serial 1234567" / "serial number 1234567" / "serial number is 1234567" ──
+  if(!document.getElementById('f-serial').value){
+    const m=text.match(/serial(?:\s+number)?(?:\s+is)?\s+([\w\-]+)/i);
+    if(m) document.getElementById('f-serial').value=m[1].trim();
+  }
+
+  // ── Year ──
   const ym=text.match(/\b(19[0-9]{2}|20[0][0-9])\b/);
   if(ym&&!document.getElementById('f-year').value) document.getElementById('f-year').value=ym[1];
+
+  // ── Condition ──
   if(!document.getElementById('f-condition').value){
     if(t.includes('mint')) document.getElementById('f-condition').value='Mint';
-    else if(t.includes('excellent')||t.includes('good')) document.getElementById('f-condition').value='Good';
-    else if(t.includes('fair')||t.includes('ok')) document.getElementById('f-condition').value='Fair';
-    else if(t.includes('poor')||t.includes('damage')) document.getElementById('f-condition').value='Poor';
+    else if(t.includes('excellent')||t.includes('great')||t.includes('good')) document.getElementById('f-condition').value='Good';
+    else if(t.includes('fair')||t.includes('ok')||t.includes('average')) document.getElementById('f-condition').value='Fair';
+    else if(t.includes('poor')||t.includes('damage')||t.includes('broken')) document.getElementById('f-condition').value='Poor';
   }
+
+  // ── Film Format ──
   if(!document.getElementById('f-format').value){
-    if(t.includes('medium format')||t.includes('120')) document.getElementById('f-format').value='Medium Format 120';
-    else if(t.includes('35mm')||t.includes('35 mm')) document.getElementById('f-format').value='35mm';
+    if(t.includes('medium format')||t.includes('120 film')||/\b120\b/.test(t)) document.getElementById('f-format').value='Medium Format 120';
+    else if(t.includes('35mm')||t.includes('35 mm')||t.includes('thirty five')) document.getElementById('f-format').value='35mm';
     else if(t.includes('polaroid')||t.includes('instant')) document.getElementById('f-format').value='Polaroid';
-    else if(t.includes('large format')||t.includes('4x5')) document.getElementById('f-format').value='4x5 Large Format';
+    else if(t.includes('large format')||t.includes('4x5')||t.includes('4 by 5')) document.getElementById('f-format').value='4x5 Large Format';
+    else if(t.includes('8x10')||t.includes('8 by 10')) document.getElementById('f-format').value='8x10 Large Format';
+    else if(/\b110\b/.test(t)) document.getElementById('f-format').value='110';
+    else if(/\b127\b/.test(t)) document.getElementById('f-format').value='127';
   }
+
+  // ── Camera Type ──
   if(!document.getElementById('f-type').value){
     if(t.includes('rangefinder')) document.getElementById('f-type').value='Rangefinder';
-    else if(t.includes('slr')) document.getElementById('f-type').value='SLR';
-    else if(t.includes('tlr')||t.includes('twin lens')) document.getElementById('f-type').value='TLR';
-    else if(t.includes('point and shoot')||t.includes('compact')) document.getElementById('f-type').value='Point & Shoot';
+    else if(t.includes('twin lens')||t.includes('tlr')) document.getElementById('f-type').value='TLR';
+    else if(t.includes('single lens reflex')||t.includes('slr')) document.getElementById('f-type').value='SLR';
+    else if(t.includes('point and shoot')||t.includes('point-and-shoot')||t.includes('compact')) document.getElementById('f-type').value='Point & Shoot';
     else if(t.includes('folding')) document.getElementById('f-type').value='Folding';
+    else if(t.includes('view camera')) document.getElementById('f-type').value='View Camera';
+    else if(t.includes('box camera')) document.getElementById('f-type').value='Box';
   }
+
+  // ── Notes: put full transcript in if notes empty ──
   if(!document.getElementById('f-notes').value.trim()) document.getElementById('f-notes').value=text.trim();
   showToast('Applied — check and adjust!');
 }
