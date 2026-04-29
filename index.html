@@ -258,7 +258,7 @@
           </div>
           <div class="voice-timer" id="voice-timer"></div>
         </div>
-        <div style="font-size:12px;color:var(--text3);line-height:1.6;padding:2px 0 4px">A good all-in-one sentence: <span style="color:var(--text2);font-style:italic">"This is a Leica M6, serial number 1654823, 1984, rangefinder, 35mm, mint condition."</span></div>
+        <div style="font-size:12px;color:var(--text3);line-height:1.6;padding:2px 0 4px">A good all-in-one sentence: <span style="color:var(--text2);font-style:italic">"This is a Leica M6, serial number 1654823, 1984, rangefinder, 35mm, made in Germany, mint condition."</span></div>
         <div class="transcript-box" id="transcript-box">Transcription will appear here…</div>
         <div style="display:flex;gap:8px">
           <button onclick="applyTranscript()" style="flex:1;background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);font-size:13px;padding:8px;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit">Apply to fields ↓</button>
@@ -288,7 +288,7 @@
         </div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Serial Number</label><input type="text" id="f-serial" placeholder="optional" autocomplete="off" /></div>
+        <div class="field"><label>Serial Number</label><input type="text" id="f-serial" placeholder="optional" autocomplete="off" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()" /></div>
         <div class="field"><label>Est. Value ($)</label><input type="number" id="f-value" placeholder="optional" min="0" autocomplete="off" /></div>
       </div>
       <div class="field"><label>Lens / Kit</label><input type="text" id="f-lens" placeholder="e.g. 50mm f/1.4 Summilux" autocomplete="off" /></div>
@@ -560,7 +560,7 @@ async function saveCamera() {
     condition: document.getElementById('f-condition').value,
     format: document.getElementById('f-format').value,
     type: document.getElementById('f-type').value,
-    serial: document.getElementById('f-serial').value.trim(),
+    serial: document.getElementById('f-serial').value.trim().toUpperCase(),
     value: document.getElementById('f-value').value.trim(),
     lens: document.getElementById('f-lens').value.trim(),
     country: document.getElementById('f-country').value.trim(),
@@ -765,6 +765,54 @@ function applyTranscript() {
     else if(t.includes('folding')) document.getElementById('f-type').value='Folding';
     else if(t.includes('view camera')) document.getElementById('f-type').value='View Camera';
     else if(t.includes('box camera')) document.getElementById('f-type').value='Box';
+  }
+
+  // ── Country of Origin ──
+  // "made in Japan" / "country Japan" / "country of origin Japan" / "from Germany"
+  if(!document.getElementById('f-country').value){
+    const countryMap = {
+      'japan':'Japan','japanese':'Japan',
+      'germany':'Germany','german':'Germany','west germany':'Germany',
+      'usa':'USA','united states':'USA','america':'USA','american':'USA',
+      'ussr':'USSR','soviet union':'USSR','soviet':'USSR','russia':'Russia',
+      'france':'France','french':'France',
+      'england':'England','uk':'England','britain':'England','british':'England',
+      'italy':'Italy','italian':'Italy',
+      'sweden':'Sweden','swedish':'Sweden',
+      'switzerland':'Switzerland','swiss':'Switzerland',
+      'china':'China','chinese':'China',
+      'korea':'South Korea','south korea':'South Korea',
+    };
+    // "made in Japan" / "manufactured in Germany"
+    const madeIn=text.match(/(?:made|manufactured|produced|built|assembled)\s+in\s+([A-Za-z\s]+?)(?:\s*,|\s*\.|$)/i);
+    if(madeIn){
+      const raw=madeIn[1].trim().toLowerCase();
+      const mapped=countryMap[raw]||madeIn[1].trim().replace(/\b\w/g,c=>c.toUpperCase());
+      document.getElementById('f-country').value=mapped;
+    }
+    // "country Japan" / "country of origin Germany" / "country is Japan"
+    if(!document.getElementById('f-country').value){
+      const countryPhrase=text.match(/country(?:\s+of\s+origin)?(?:\s+is)?\s+([A-Za-z\s]+?)(?:\s*,|\s*\.|$)/i);
+      if(countryPhrase){
+        const raw=countryPhrase[1].trim().toLowerCase();
+        const mapped=countryMap[raw]||countryPhrase[1].trim().replace(/\b\w/g,c=>c.toUpperCase());
+        document.getElementById('f-country').value=mapped;
+      }
+    }
+    // "from Japan" — only if other country phrases didn't match
+    if(!document.getElementById('f-country').value){
+      const fromMatch=text.match(/\bfrom\s+([A-Za-z\s]+?)(?:\s*,|\s*\.|$)/i);
+      if(fromMatch){
+        const raw=fromMatch[1].trim().toLowerCase();
+        if(countryMap[raw]) document.getElementById('f-country').value=countryMap[raw];
+      }
+    }
+    // Keyword fallback — if a country name appears anywhere in the transcript
+    if(!document.getElementById('f-country').value){
+      for(const [key,val] of Object.entries(countryMap)){
+        if(t.includes(key)){ document.getElementById('f-country').value=val; break; }
+      }
+    }
   }
 
   // ── Notes: put full transcript in if notes empty ──
