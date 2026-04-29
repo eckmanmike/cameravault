@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-title" content="CameraVault" />
   <link rel="manifest" href="manifest.json" />
   <title>CameraVault</title>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <style>
     :root {
       --bg:#111010;--bg2:#1c1b1b;--bg3:#252424;--bg4:#2e2d2d;
@@ -26,7 +26,7 @@
     .screen{position:absolute;inset:0;display:none;flex-direction:column;overflow:hidden}
     .screen.active{display:flex}
     .topbar{padding:calc(var(--safe-top) + 16px) 20px 14px;background:var(--bg);border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
-    .topbar-logo{font-family:'Playfair Display',serif;font-size:22px;color:var(--gold);letter-spacing:.5px}
+    .topbar-logo{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--gold);letter-spacing:1px}
     .topbar-sub{font-size:12px;color:var(--text3);margin-top:1px}
     .topbar-right{margin-left:auto;display:flex;gap:10px;align-items:center}
     .icon-btn{width:38px;height:38px;background:var(--bg3);border:1px solid rgba(255,255,255,.07);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;color:var(--text2);transition:background .15s}
@@ -52,7 +52,7 @@
     .card-img-placeholder{width:100%;aspect-ratio:4/3;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:36px;color:var(--text3)}
     .card-body{padding:10px 12px 12px}
     .card-make{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--gold);margin-bottom:2px}
-    .card-model{font-family:'Playfair Display',serif;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .card-model{font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.5px}
     .card-year{font-size:12px;color:var(--text3);margin-top:2px}
     .card-condition{position:absolute;top:8px;right:8px;font-size:10px;padding:3px 7px;border-radius:20px;font-weight:500}
     .cond-mint{background:rgba(46,204,113,.2);color:#2ecc71}
@@ -61,7 +61,7 @@
     .cond-poor{background:rgba(192,57,43,.2);color:#e74c3c}
     .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;padding:40px 20px;text-align:center}
     .empty-icon{font-size:64px;opacity:.3}
-    .empty-title{font-family:'Playfair Display',serif;font-size:22px;color:var(--text2)}
+    .empty-title{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--text2);letter-spacing:1px}
     .empty-sub{font-size:14px;color:var(--text3);max-width:240px}
     .fab{position:absolute;bottom:calc(var(--safe-bottom) + 24px);right:24px;width:60px;height:60px;background:var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;color:#111;cursor:pointer;box-shadow:0 4px 20px rgba(201,168,76,.4);transition:transform .15s;z-index:20;border:none}
     .fab:active{transform:scale(.93)}
@@ -98,7 +98,7 @@
     .detail-hero-placeholder{width:100%;aspect-ratio:4/3;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:72px;color:var(--text3)}
     .detail-body{padding:20px}
     .detail-make{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:4px}
-    .detail-model{font-family:'Playfair Display',serif;font-size:28px;color:var(--text);line-height:1.2;margin-bottom:6px}
+    .detail-model{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--text);line-height:1.2;margin-bottom:6px;letter-spacing:1px}
     .detail-meta{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
     .detail-pill{font-size:12px;padding:4px 10px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid rgba(255,255,255,.07)}
     .detail-section{margin-bottom:20px}
@@ -115,7 +115,7 @@
     .btn-delete{background:rgba(192,57,43,.15);color:#e74c3c;border:1px solid rgba(192,57,43,.2)}
     /* setup screen */
     .setup-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:24px 20px}
-    .setup-title{font-family:'Playfair Display',serif;font-size:24px;color:var(--text);margin-bottom:8px}
+    .setup-title{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);margin-bottom:8px;letter-spacing:1px}
     .setup-sub{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:28px}
     .setup-step{display:flex;gap:14px;margin-bottom:20px;align-items:flex-start}
     .step-num{width:28px;height:28px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
@@ -727,7 +727,7 @@ function applyTranscript() {
   // ── Serial: "serial 1234567" / "serial number 1234567" / "serial number is 1234567" ──
   if(!document.getElementById('f-serial').value){
     const m=text.match(/serial(?:\s+number)?(?:\s+is)?\s+([\w\-]+)/i);
-    if(m) document.getElementById('f-serial').value=m[1].trim().replace(/\s+/g, '');
+    if(m) document.getElementById('f-serial').value=m[1].trim();
   }
 
   // ── Year ──
