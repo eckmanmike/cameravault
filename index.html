@@ -148,7 +148,7 @@
 <div class="screen active" id="screen-gallery">
   <div class="topbar">
     <div>
-      <div class="topbar-logo">📷 CameraVault</div>
+      <div class="topbar-logo">CameraVault</div>
       <div class="topbar-sub">Film Camera Collection</div>
     </div>
     <div class="topbar-right">
@@ -292,6 +292,7 @@
         <div class="field"><label>Est. Value ($)</label><input type="number" id="f-value" placeholder="optional" min="0" autocomplete="off" /></div>
       </div>
       <div class="field"><label>Lens / Kit</label><input type="text" id="f-lens" placeholder="e.g. 50mm f/1.4 Summilux" autocomplete="off" /></div>
+      <div class="field"><label>Country of Origin</label><input type="text" id="f-country" placeholder="e.g. Japan, Germany, USA" autocomplete="off" /></div>
       <div class="field"><label>Notes</label><textarea id="f-notes" placeholder="Provenance, quirks, history, repairs…"></textarea></div>
     </div>
     <button class="save-btn" onclick="saveCamera()">Save Camera</button>
@@ -473,7 +474,7 @@ function renderGallery(filter = '') {
       <div class="card-body">
         <div class="card-make">${cam.make||'Unknown Make'}</div>
         <div class="card-model">${cam.model||'Unknown Model'}</div>
-        <div class="card-year">${cam.year||''}${cam.format?(cam.year?' · ':'')+cam.format:''}</div>
+        <div class="card-year">${cam.year||''}${cam.format?(cam.year?' · ':'')+cam.format:''}${cam.country?((cam.year||cam.format)?' · ':'')+cam.country:''}</div>
       </div>
     </div>`;
   }).join('');
@@ -489,7 +490,7 @@ function openDetail(id) {
     : `<div class="detail-hero-placeholder">📷</div>`;
   const rows = [
     ['Type',cam.type],['Film Format',cam.format],['Year',cam.year],
-    ['Serial #',cam.serial],['Lens / Kit',cam.lens],
+    ['Serial #',cam.serial],['Lens / Kit',cam.lens],['Country',cam.country],
     ['Est. Value',cam.value?`$${Number(cam.value).toLocaleString()}`:''],
     ['Added',new Date(cam.added).toLocaleDateString()],
   ].filter(r=>r[1]);
@@ -503,6 +504,7 @@ function openDetail(id) {
         ${cam.condition?`<span class="card-condition ${cc}" style="position:static">${cam.condition}</span>`:''}
         ${cam.year?`<span class="detail-pill">${cam.year}</span>`:''}
         ${cam.format?`<span class="detail-pill">${cam.format}</span>`:''}
+        ${cam.country?`<span class="detail-pill">${cam.country}</span>`:''}
       </div>
       ${rows.length?`<div class="detail-section"><div class="detail-section-title">Specifications</div>${rows.map(r=>`<div class="detail-row"><div class="detail-row-label">${r[0]}</div><div class="detail-row-value">${r[1]}</div></div>`).join('')}</div>`:''}
       ${cam.notes?`<div class="detail-section"><div class="detail-section-title">Notes</div><div class="detail-notes">${cam.notes}</div></div>`:''}
@@ -519,7 +521,7 @@ function editCamera(id) {
   if (!cam) return;
   editingId = id; currentPhotoData = cam.photo||null; currentTranscript='';
   document.getElementById('add-title').textContent = 'Edit Camera';
-  ['make','model','year','condition','format','type','serial','value','lens','notes'].forEach(k => {
+  ['make','model','year','condition','format','type','serial','value','lens','country','notes'].forEach(k => {
     document.getElementById('f-'+k).value = cam[k]||'';
   });
   updatePhotoZone();
@@ -541,7 +543,7 @@ function deleteCamera(id) {
 function openAdd() {
   editingId = null; currentPhotoData = null; currentTranscript = '';
   document.getElementById('add-title').textContent = 'Add Camera';
-  ['make','model','year','serial','value','lens','notes'].forEach(k => document.getElementById('f-'+k).value='');
+  ['make','model','year','serial','value','lens','country','notes'].forEach(k => document.getElementById('f-'+k).value='');
   ['condition','format','type'].forEach(k => document.getElementById('f-'+k).value='');
   updatePhotoZone(); resetTranscriptUI(); stopRecording();
   showScreen('screen-add');
@@ -561,6 +563,7 @@ async function saveCamera() {
     serial: document.getElementById('f-serial').value.trim(),
     value: document.getElementById('f-value').value.trim(),
     lens: document.getElementById('f-lens').value.trim(),
+    country: document.getElementById('f-country').value.trim(),
     notes: document.getElementById('f-notes').value.trim(),
     photo: currentPhotoData,
     added: editingId ? (cameras.find(c=>c.id===editingId)?.added||Date.now()) : Date.now(),
