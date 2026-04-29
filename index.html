@@ -616,30 +616,55 @@ waveform.innerHTML = Array.from({length:18},()=>`<div class="wave-bar"></div>`).
 
 function animateWave() { waveform.querySelectorAll('.wave-bar').forEach(b=>b.style.height=(4+Math.random()*28)+'px'); }
 
+function startRecognitionSession() {
+  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  if (!SR) return;
+  recognition = new SR();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = ev => {
+    let interim = '';
+    for (let i = 0; i < ev.results.length; i++) {
+      const t = ev.results[i][0].transcript;
+      if (ev.results[i].isFinal) {
+        currentTranscript += t + ' ';
+        interim = '';
+      } else {
+        interim = t;
+      }
+    }
+    const box = document.getElementById('transcript-box');
+    box.textContent = currentTranscript + interim;
+    box.classList.toggle('has-text', !!(currentTranscript + interim));
+  };
+
+  recognition.onerror = e => {
+    if (e.error === 'no-speech') {
+      if (isRecording) startRecognitionSession();
+    } else if (e.error !== 'aborted') {
+      showToast('Mic: ' + e.error);
+      stopRecording();
+    }
+  };
+
+  recognition.onend = () => {
+    if (isRecording) startRecognitionSession();
+  };
+
+  try { recognition.start(); } catch(e) {}
+}
+
 function startRecording() {
   if (isRecording) { stopRecording(); return; }
   const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
   if (SR) {
-    recognition = new SR();
-    recognition.continuous=true; recognition.interimResults=true; recognition.lang='en-US';
-    let final='';
-    let lastResultIndex=0;
-    recognition.onresult = ev => {
-      let interim='';
-      for (let i=ev.resultIndex;i<ev.results.length;i++) {
-        const t=ev.results[i][0].transcript;
-        if(ev.results[i].isFinal) {
-          if(i>=lastResultIndex){ final+=t+' '; lastResultIndex=i+1; }
-        } else { interim=t; }
-      }
-      const box=document.getElementById('transcript-box');
-      box.textContent=final+interim; box.classList.toggle('has-text',!!(final+interim));
-      currentTranscript=final+interim;
-    };
-    recognition.onerror=e=>{ if(e.error!=='aborted') showToast('Mic: '+e.error); stopRecording(); };
-    recognition.onend=()=>{ if(isRecording) stopRecording(); };
-    recognition.start();
-    isRecording=true; setRecordingUI(true); return;
+    currentTranscript = '';
+    isRecording = true;
+    setRecordingUI(true);
+    startRecognitionSession();
+    return;
   }
   navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
     mediaRecorder=new MediaRecorder(stream); mediaRecorder.start();
