@@ -727,7 +727,7 @@ function applyTranscript() {
   // ── Serial: "serial 1234567" / "serial number 1234567" / "serial number is 1234567" ──
   if(!document.getElementById('f-serial').value){
     const m=text.match(/serial(?:\s+number)?(?:\s+is)?\s+([\w\-]+)/i);
-    if(m) document.getElementById('f-serial').value=m[1].trim();
+    if(m) document.getElementById('f-serial').value=m[1].trim().replace(/\s+/g, '');
   }
 
   // ── Year ──
