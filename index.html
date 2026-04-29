@@ -273,7 +273,7 @@
       <div class="field-row">
         <div class="field"><label>Year</label><input type="number" id="f-year" placeholder="e.g. 1978" min="1850" max="2010" autocomplete="off" /></div>
         <div class="field"><label>Condition</label>
-          <select id="f-condition"><option value="">Select…</option><option>Mint</option><option>Good</option><option>Fair</option><option>Poor</option></select>
+          <select id="f-condition"><option value="">Select…</option><option>Excellent</option><option>Good</option><option>Fair</option><option>Poor</option></select>
         </div>
       </div>
     </div>
@@ -281,7 +281,7 @@
       <div class="section-label">Additional Info</div>
       <div class="field-row">
         <div class="field"><label>Film Format</label>
-          <select id="f-format"><option value="">Select…</option><option value="35mm">35mm</option><option value="Medium Format 120">120 (Medium Format)</option><option value="4x5 Large Format">4×5 Large Format</option><option value="8x10 Large Format">8×10 Large Format</option><option value="110">110</option><option value="126">126</option><option value="127">127</option><option value="APS">APS</option><option value="116">116</option><option value="616">616</option><option value="620">620</option><option value="828">828</option><option value="Polaroid">Polaroid / Instant</option><option value="Digital">Digital</option><option value="Other">Other</option></select>
+          <select id="f-format"><option value="">Select…</option><option value="35mm">35mm</option><option value="120">120</option><option value="4x5 Large Format">4×5 Large Format</option><option value="8x10 Large Format">8×10 Large Format</option><option value="110">110</option><option value="126">126</option><option value="127">127</option><option value="APS">APS</option><option value="116">116</option><option value="616">616</option><option value="620">620</option><option value="828">828</option><option value="Polaroid">Polaroid / Instant</option><option value="Digital">Digital</option><option value="Other">Other</option></select>
         </div>
         <div class="field"><label>Camera Type</label>
           <select id="f-type"><option value="">Select…</option><option value="SLR">SLR</option><option value="Rangefinder">Rangefinder</option><option value="TLR">TLR</option><option value="Point & Shoot">Point & Shoot</option><option value="Folding">Folding</option><option value="Box">Box Camera</option><option value="View Camera">View Camera</option><option value="Toy">Toy / Lomography</option><option value="Other">Other</option></select>
@@ -464,7 +464,7 @@ function renderGallery(filter = '') {
   stats.textContent = `${filtered.length} camera${filtered.length !== 1 ? 's' : ''}${filter ? ' found' : ' in collection'}`;
 
   grid.innerHTML = filtered.slice().sort((a,b) => (b.added||0) - (a.added||0)).map(cam => {
-    const cc = {Mint:'cond-mint',Good:'cond-good',Fair:'cond-fair',Poor:'cond-poor'}[cam.condition] || '';
+    const cc = {Excellent:'cond-mint',Good:'cond-good',Fair:'cond-fair',Poor:'cond-poor'}[cam.condition] || '';
     const img = cam.photo
       ? `<img class="card-img" src="${cam.photo}" alt="${cam.model}" loading="lazy"/>`
       : `<div class="card-img-placeholder">📷</div>`;
@@ -484,7 +484,7 @@ function renderGallery(filter = '') {
 function openDetail(id) {
   const cam = cameras.find(c => c.id === id);
   if (!cam) return;
-  const cc = {Mint:'cond-mint',Good:'cond-good',Fair:'cond-fair',Poor:'cond-poor'}[cam.condition]||'';
+  const cc = {Excellent:'cond-mint',Good:'cond-good',Fair:'cond-fair',Poor:'cond-poor'}[cam.condition]||'';
   const img = cam.photo
     ? `<img class="detail-hero" src="${cam.photo}" alt="${cam.model}"/>`
     : `<div class="detail-hero-placeholder">📷</div>`;
@@ -739,7 +739,7 @@ function applyTranscript() {
 
   // ── Condition ──
   if(!document.getElementById('f-condition').value){
-    if(t.includes('mint')) document.getElementById('f-condition').value='Mint';
+    if(t.includes('mint')) document.getElementById('f-condition').value='Excellent';
     else if(t.includes('excellent')||t.includes('great')||t.includes('good')) document.getElementById('f-condition').value='Good';
     else if(t.includes('fair')||t.includes('ok')||t.includes('average')) document.getElementById('f-condition').value='Fair';
     else if(t.includes('poor')||t.includes('damage')||t.includes('broken')) document.getElementById('f-condition').value='Poor';
@@ -747,7 +747,7 @@ function applyTranscript() {
 
   // ── Film Format ──
   if(!document.getElementById('f-format').value){
-    if(t.includes('medium format')||t.includes('120 film')||/\b120\b/.test(t)) document.getElementById('f-format').value='Medium Format 120';
+    if(t.includes('medium format')||t.includes('120 film')||/\b120\b/.test(t)) document.getElementById('f-format').value='120';
     else if(t.includes('35mm')||t.includes('35 mm')||t.includes('thirty five')) document.getElementById('f-format').value='35mm';
     else if(t.includes('polaroid')||t.includes('instant')) document.getElementById('f-format').value='Polaroid';
     else if(t.includes('large format')||t.includes('4x5')||t.includes('4 by 5')) document.getElementById('f-format').value='4x5 Large Format';
@@ -888,7 +888,7 @@ if(savedCfg&&savedCfg.databaseURL){
 // Seed demo data if fresh install with no sync
 if(!savedCfg&&!cameras.length){
   cameras=[
-    {id:'demo1',make:'Leica',model:'M6',year:'1984',condition:'Mint',format:'35mm',type:'Rangefinder',serial:'1654823',value:'2800',lens:'50mm f/1.4 Summilux',notes:'Black chrome finish. Shutter and metering perfect.',photo:null,added:Date.now()-864e5*10,updated:Date.now()},
+    {id:'demo1',make:'Leica',model:'M6',year:'1984',condition:'Excellent',format:'35mm',type:'Rangefinder',serial:'1654823',value:'2800',lens:'50mm f/1.4 Summilux',notes:'Black chrome finish. Shutter and metering perfect.',photo:null,added:Date.now()-864e5*10,updated:Date.now()},
     {id:'demo2',make:'Nikon',model:'F3',year:'1980',condition:'Good',format:'35mm',type:'SLR',serial:'2001234',value:'450',lens:'50mm f/1.4 Nikkor AI-s',notes:'Classic professional body. Light seals replaced 2022.',photo:null,added:Date.now()-864e5*5,updated:Date.now()},
   ];
   saveLocalDB(cameras);
