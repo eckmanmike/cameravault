@@ -281,10 +281,10 @@
       <div class="section-label">Additional Info</div>
       <div class="field-row">
         <div class="field"><label>Film Format</label>
-          <select id="f-format"><option value="">Select…</option><option value="35mm">35mm</option><option value="120">120</option><option value="4x5 Large Format">4×5 Large Format</option><option value="8x10 Large Format">8×10 Large Format</option><option value="110">110</option><option value="126">126</option><option value="127">127</option><option value="APS">APS</option><option value="116">116</option><option value="616">616</option><option value="620">620</option><option value="828">828</option><option value="Polaroid">Polaroid / Instant</option><option value="Digital">Digital</option><option value="Other">Other</option></select>
+          <select id="f-format" onchange="handleCustomOption(this,'formats')"></select>
         </div>
         <div class="field"><label>Camera Type</label>
-          <select id="f-type"><option value="">Select…</option><option value="SLR">SLR</option><option value="Rangefinder">Rangefinder</option><option value="TLR">TLR</option><option value="Point & Shoot">Point & Shoot</option><option value="Folding">Folding</option><option value="Box">Box Camera</option><option value="View Camera">View Camera</option><option value="Toy">Toy / Lomography</option><option value="Other">Other</option></select>
+          <select id="f-type" onchange="handleCustomOption(this,'types')"></select>
         </div>
       </div>
       <div class="field-row">
@@ -292,6 +292,7 @@
         <div class="field"><label>Est. Value ($)</label><input type="number" id="f-value" placeholder="optional" min="0" autocomplete="off" /></div>
       </div>
       <div class="field"><label>Lens / Kit</label><input type="text" id="f-lens" placeholder="e.g. 50mm f/1.4 Summilux" autocomplete="off" /></div>
+      <div class="field"><label>Lens Mount</label><input type="text" id="f-mount" placeholder="e.g. M39, Nikon F, Canon FD" autocomplete="off" /></div>
       <div class="field"><label>Country of Origin</label><input type="text" id="f-country" placeholder="e.g. Japan, Germany, USA" autocomplete="off" /></div>
       <div class="field"><label>Notes</label><textarea id="f-notes" placeholder="Provenance, quirks, history, repairs…"></textarea></div>
     </div>
@@ -474,7 +475,7 @@ function renderGallery(filter = '') {
       <div class="card-body">
         <div class="card-make">${cam.make||'Unknown Make'}</div>
         <div class="card-model">${cam.model||'Unknown Model'}</div>
-        <div class="card-year">${cam.year||''}${cam.format?(cam.year?' · ':'')+cam.format:''}${cam.country?((cam.year||cam.format)?' · ':'')+cam.country:''}</div>
+        <div class="card-year">${cam.year||''}${cam.format?(cam.year?' · ':'')+cam.format:''}${cam.mount?((cam.year||cam.format||cam.country)?' · ':'')+cam.mount:''}${cam.country?((cam.year||cam.format||cam.mount)?' · ':'')+cam.country:''}</div>
       </div>
     </div>`;
   }).join('');
@@ -490,7 +491,7 @@ function openDetail(id) {
     : `<div class="detail-hero-placeholder">📷</div>`;
   const rows = [
     ['Type',cam.type],['Film Format',cam.format],['Year',cam.year],
-    ['Serial #',cam.serial],['Lens / Kit',cam.lens],['Country',cam.country],
+    ['Serial #',cam.serial],['Lens / Kit',cam.lens],['Lens Mount',cam.mount],['Country',cam.country],
     ['Est. Value',cam.value?`$${Number(cam.value).toLocaleString()}`:''],
     ['Added',new Date(cam.added).toLocaleDateString()],
   ].filter(r=>r[1]);
@@ -504,6 +505,7 @@ function openDetail(id) {
         ${cam.condition?`<span class="card-condition ${cc}" style="position:static">${cam.condition}</span>`:''}
         ${cam.year?`<span class="detail-pill">${cam.year}</span>`:''}
         ${cam.format?`<span class="detail-pill">${cam.format}</span>`:''}
+        ${cam.mount?`<span class="detail-pill">${cam.mount}</span>`:''}
         ${cam.country?`<span class="detail-pill">${cam.country}</span>`:''}
       </div>
       ${rows.length?`<div class="detail-section"><div class="detail-section-title">Specifications</div>${rows.map(r=>`<div class="detail-row"><div class="detail-row-label">${r[0]}</div><div class="detail-row-value">${r[1]}</div></div>`).join('')}</div>`:''}
@@ -521,11 +523,12 @@ function editCamera(id) {
   if (!cam) return;
   editingId = id; currentPhotoData = cam.photo||null; currentTranscript='';
   document.getElementById('add-title').textContent = 'Edit Camera';
-  ['make','model','year','condition','format','type','serial','value','lens','country','notes'].forEach(k => {
+  ['make','model','year','condition','format','type','serial','value','lens','mount','country','notes'].forEach(k => {
     document.getElementById('f-'+k).value = cam[k]||'';
   });
   updatePhotoZone();
   resetTranscriptUI();
+  initDropdowns(cam.format||'', cam.type||'');
   showScreen('screen-add');
 }
 
@@ -543,9 +546,10 @@ function deleteCamera(id) {
 function openAdd() {
   editingId = null; currentPhotoData = null; currentTranscript = '';
   document.getElementById('add-title').textContent = 'Add Camera';
-  ['make','model','year','serial','value','lens','country','notes'].forEach(k => document.getElementById('f-'+k).value='');
+  ['make','model','year','serial','value','lens','mount','country','notes'].forEach(k => document.getElementById('f-'+k).value='');
   ['condition','format','type'].forEach(k => document.getElementById('f-'+k).value='');
   updatePhotoZone(); resetTranscriptUI(); stopRecording();
+  initDropdowns('','');
   showScreen('screen-add');
 }
 
@@ -563,6 +567,7 @@ async function saveCamera() {
     serial: document.getElementById('f-serial').value.trim().toUpperCase(),
     value: document.getElementById('f-value').value.trim(),
     lens: document.getElementById('f-lens').value.trim(),
+    mount: document.getElementById('f-mount').value.trim(),
     country: document.getElementById('f-country').value.trim(),
     notes: document.getElementById('f-notes').value.trim(),
     photo: currentPhotoData,
@@ -870,6 +875,57 @@ function showToast(msg){
   const t=document.getElementById('toast');
   t.textContent=msg;t.classList.add('show');
   clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+
+// ── Custom dropdown options ──
+const CUSTOM_KEY = 'cv_custom_options';
+
+const DEFAULT_FORMATS = ['35mm','120','4x5 Large Format','8x10 Large Format','110','116','126','127','620','616','828','APS','Polaroid / Instant','Digital','Other'];
+const DEFAULT_TYPES   = ['SLR','Rangefinder','TLR','Point & Shoot','Folding','Box Camera','View Camera','Toy / Lomography','Other'];
+
+function loadCustomOptions() {
+  try { return JSON.parse(localStorage.getItem(CUSTOM_KEY)) || {formats:[], types:[]}; }
+  catch { return {formats:[], types:[]}; }
+}
+function saveCustomOptions(opts) {
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(opts));
+}
+
+function buildSelectOptions(selectId, defaults, customList, currentValue) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const all = [...defaults, ...customList.filter(v => !defaults.includes(v))];
+  sel.innerHTML = '<option value="">Select…</option>'
+    + all.map(v => `<option${currentValue===v?' selected':''}>${v}</option>`).join('')
+    + '<option value="__add_new__">＋ Add new…</option>';
+}
+
+function initDropdowns(currentFormat, currentType) {
+  const opts = loadCustomOptions();
+  buildSelectOptions('f-format', DEFAULT_FORMATS, opts.formats, currentFormat||'');
+  buildSelectOptions('f-type',   DEFAULT_TYPES,   opts.types,   currentType||'');
+}
+
+function handleCustomOption(sel, listKey) {
+  if (sel.value !== '__add_new__') return;
+  const label = listKey === 'formats' ? 'film format' : 'camera type';
+  const newVal = prompt('Enter new ' + label + ':');
+  if (!newVal || !newVal.trim()) {
+    sel.value = '';
+    return;
+  }
+  const trimmed = newVal.trim();
+  const opts = loadCustomOptions();
+  if (!opts[listKey].includes(trimmed)) {
+    opts[listKey].push(trimmed);
+    saveCustomOptions(opts);
+  }
+  // Rebuild with new value selected
+  const currentFormat = listKey==='formats' ? trimmed : document.getElementById('f-format').value;
+  const currentType   = listKey==='types'   ? trimmed : document.getElementById('f-type').value;
+  initDropdowns(currentFormat, currentType);
+  showToast('Added: ' + trimmed);
 }
 
 // ═══════════════ INIT ═══════════════
