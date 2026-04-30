@@ -323,7 +323,17 @@ const DB_KEY  = 'cameravault_v1';
 function loadCfg() { try { return JSON.parse(localStorage.getItem(CFG_KEY)); } catch { return null; } }
 function saveCfg(c) { localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
 function loadLocalDB() { try { return JSON.parse(localStorage.getItem(DB_KEY)) || []; } catch { return []; } }
-function saveLocalDB(d) { localStorage.setItem(DB_KEY, JSON.stringify(d)); }
+function saveLocalDB(d) {
+  // Strip photos before saving to localStorage — photos live in Firebase only.
+  // This prevents the localStorage 5-10MB limit from being hit.
+  try {
+    const stripped = d.map(c => { const {photo, ...rest} = c; return rest; });
+    localStorage.setItem(DB_KEY, JSON.stringify(stripped));
+  } catch(e) {
+    // If still too full, save without photos and warn
+    console.warn('localStorage save failed:', e.message);
+  }
+}
 
 // ═══════════════ STATE ═══════════════
 let cameras = loadLocalDB();
@@ -965,6 +975,21 @@ function handleCustomOption(sel, listKey) {
 document.querySelector('.connect-btn').onclick=connectFirebaseFromSetup;
 
 const savedCfg=loadCfg();
+
+// One-time cleanup: strip any photos already stored in localStorage
+// to free up space (photos now live in Firebase only)
+try {
+  const existing = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
+  const hasPhotos = existing.some(c => c.photo);
+  if (hasPhotos) {
+    const stripped = existing.map(c => { const {photo, ...rest} = c; return rest; });
+    localStorage.setItem(DB_KEY, JSON.stringify(stripped));
+  }
+} catch(e) {
+  // If localStorage is too full even to read, clear the camera cache entirely
+  // (Firebase will repopulate it on connect)
+  try { localStorage.removeItem(DB_KEY); } catch(e2) {}
+}
 if(savedCfg&&savedCfg.databaseURL){
   connectFirebase(savedCfg);
   document.getElementById('setup-banner').style.display='none';
