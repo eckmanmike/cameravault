@@ -557,30 +557,62 @@ async function saveCamera() {
   const make = document.getElementById('f-make').value.trim();
   const model = document.getElementById('f-model').value.trim();
   if (!make && !model) { showToast('Please add Make or Model'); return; }
+
+  // Sanitize format/type — strip __add_new__ sentinel if somehow left behind
+  const rawFormat = document.getElementById('f-format').value;
+  const rawType   = document.getElementById('f-type').value;
+
   const cam = {
     id: editingId || (Date.now().toString(36)+Math.random().toString(36).slice(2)),
     make, model,
-    year: document.getElementById('f-year').value.trim(),
+    year:    document.getElementById('f-year').value.trim(),
     condition: document.getElementById('f-condition').value,
-    format: document.getElementById('f-format').value,
-    type: document.getElementById('f-type').value,
-    serial: document.getElementById('f-serial').value.trim().toUpperCase(),
-    value: document.getElementById('f-value').value.trim(),
-    lens: document.getElementById('f-lens').value.trim(),
-    mount: document.getElementById('f-mount').value.trim(),
+    format:  rawFormat === '__add_new__' ? '' : rawFormat,
+    type:    rawType   === '__add_new__' ? '' : rawType,
+    serial:  document.getElementById('f-serial').value.trim().toUpperCase(),
+    value:   document.getElementById('f-value').value.trim(),
+    lens:    document.getElementById('f-lens').value.trim(),
+    mount:   document.getElementById('f-mount').value.trim(),
     country: document.getElementById('f-country').value.trim(),
-    notes: document.getElementById('f-notes').value.trim(),
-    photo: currentPhotoData,
-    added: editingId ? (cameras.find(c=>c.id===editingId)?.added||Date.now()) : Date.now(),
+    notes:   document.getElementById('f-notes').value.trim(),
+    photo:   currentPhotoData,
+    added:   editingId ? (cameras.find(c=>c.id===editingId)?.added||Date.now()) : Date.now(),
     updated: Date.now(),
   };
-  if (editingId) cameras = cameras.map(c=>c.id===editingId?cam:c);
-  else cameras.push(cam);
-  saveLocalDB(cameras);
-  if (dbRef) await pushToFirebase(cam);
-  renderGallery();
-  showToast(editingId?'Camera updated':'Camera added!');
-  stopRecording(); showScreen('screen-gallery');
+
+  try {
+    if (editingId) cameras = cameras.map(c=>c.id===editingId?cam:c);
+    else cameras.push(cam);
+    saveLocalDB(cameras);
+
+    if (dbRef) {
+      try {
+        await dbRef.child(cam.id).set(cam);
+        setSyncState('synced');
+      } catch(firebaseErr) {
+        // If Firebase rejects (likely photo too large), retry without photo
+        console.warn('Firebase write failed, retrying without photo:', firebaseErr.message);
+        const camNoPhoto = {...cam, photo: null};
+        try {
+          await dbRef.child(cam.id).set(camNoPhoto);
+          setSyncState('synced');
+          showToast('Saved — photo stored locally only (too large for sync)');
+        } catch(retryErr) {
+          setSyncState('error');
+          showToast('Saved locally — sync failed: ' + retryErr.message);
+        }
+      }
+    }
+
+    renderGallery();
+    showToast(editingId ? 'Camera updated!' : 'Camera added!');
+    stopRecording();
+    showScreen('screen-gallery');
+
+  } catch(e) {
+    showToast('Error saving: ' + e.message);
+    console.error('saveCamera error:', e);
+  }
 }
 
 // ═══════════════ PHOTO ═══════════════
