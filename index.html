@@ -227,6 +227,12 @@
     <div class="config-field"><label>Messaging Sender ID</label><input id="cfg-messagingSenderId" placeholder="123456789" autocomplete="off" /></div>
     <div class="config-field"><label>App ID</label><input id="cfg-appId" placeholder="1:123…" autocomplete="off" /></div>
 
+    <div class="config-field" style="margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07)">
+      <label style="color:var(--gold)">Cloudflare Worker URL</label>
+      <input id="cfg-workerUrl" placeholder="https://your-worker.workers.dev" autocomplete="off" />
+      <div style="font-size:11px;color:var(--text3);margin-top:5px;line-height:1.5">Required for Whisper voice transcription. Leave blank to use basic browser speech recognition.</div>
+    </div>
+
     <button class="connect-btn" onclick="connectFirebase()">Connect & Sync ☁️</button>
     <button class="skip-btn" onclick="showScreen('screen-gallery')">Use offline only</button>
   </div>
@@ -259,6 +265,7 @@
           <div class="voice-timer" id="voice-timer"></div>
         </div>
         <div style="font-size:12px;color:var(--text3);line-height:1.6;padding:2px 0 4px">A good all-in-one sentence: <span style="color:var(--text2);font-style:italic">"This is a Leica M6, serial number 1654823, 1984, rangefinder, 35mm, made in Germany, mint condition."</span></div>
+        <div id="voice-mode-badge" style="display:none;font-size:11px;padding:3px 8px;border-radius:20px;margin-bottom:6px;width:fit-content"></div>
         <div class="transcript-box" id="transcript-box">Transcription will appear here…</div>
         <div style="display:flex;gap:8px">
           <button onclick="applyTranscript()" style="flex:1;background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);font-size:13px;padding:8px;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit">Apply to fields ↓</button>
@@ -426,6 +433,7 @@ function connectFirebaseFromSetup() {
     storageBucket: document.getElementById('cfg-storageBucket').value.trim(),
     messagingSenderId: document.getElementById('cfg-messagingSenderId').value.trim(),
     appId: document.getElementById('cfg-appId').value.trim(),
+    workerUrl: document.getElementById('cfg-workerUrl').value.trim(),
   };
   if (!cfg.apiKey || !cfg.databaseURL) { showToast('Please fill in API Key and Database URL'); return; }
   saveCfg(cfg);
@@ -538,6 +546,7 @@ function editCamera(id) {
   });
   updatePhotoZone();
   resetTranscriptUI();
+  updateVoiceModeBadge();
   initDropdowns(cam.format||'', cam.type||'');
   showScreen('screen-add');
 }
@@ -559,6 +568,7 @@ function openAdd() {
   ['make','model','year','serial','value','lens','mount','country','notes'].forEach(k => document.getElementById('f-'+k).value='');
   ['condition','format','type'].forEach(k => document.getElementById('f-'+k).value='');
   updatePhotoZone(); resetTranscriptUI(); stopRecording();
+  updateVoiceModeBadge();
   initDropdowns('','');
   showScreen('screen-add');
 }
@@ -666,25 +676,148 @@ waveform.innerHTML = Array.from({length:18},()=>`<div class="wave-bar"></div>`).
 
 function animateWave() { waveform.querySelectorAll('.wave-bar').forEach(b=>b.style.height=(4+Math.random()*28)+'px'); }
 
+// Detect which mode we're in based on Worker URL presence
+function getWorkerUrl() {
+  try {
+    const cfg = loadCfg();
+    return (cfg && cfg.workerUrl && cfg.workerUrl.trim()) ? cfg.workerUrl.trim().replace(/\/$/, '') : null;
+  } catch { return null; }
+}
+
+function updateVoiceModeBadge() {
+  const badge = document.getElementById('voice-mode-badge');
+  if (!badge) return;
+  const workerUrl = getWorkerUrl();
+  if (workerUrl) {
+    badge.style.display = 'block';
+    badge.style.background = 'rgba(46,204,113,.15)';
+    badge.style.color = '#2ecc71';
+    badge.style.border = '1px solid rgba(46,204,113,.3)';
+    badge.textContent = '✦ Whisper AI transcription active';
+  } else {
+    badge.style.display = 'block';
+    badge.style.background = 'rgba(107,101,96,.2)';
+    badge.style.color = 'var(--text3)';
+    badge.style.border = '1px solid rgba(255,255,255,.08)';
+    badge.textContent = '⚠ Basic browser speech — add Worker URL in Settings for better accuracy';
+  }
+}
+
+// ── Whisper path (when Worker URL is configured) ──
+let audioChunks = [];
+
+function startWhisperRecording() {
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    audioChunks = [];
+    // Prefer webm/opus (Chrome/Android), fall back to whatever is supported
+    const mimeType = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4']
+      .find(m => MediaRecorder.isTypeSupported(m)) || '';
+    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      sendToWhisper(new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' }));
+    };
+    mediaRecorder.start(250); // collect chunks every 250ms for smooth waveform
+    isRecording = true;
+    setRecordingUI(true);
+  }).catch(() => showToast('Mic access denied'));
+}
+
+async function sendToWhisper(audioBlob) {
+  const box = document.getElementById('transcript-box');
+  box.textContent = 'Transcribing with Whisper…';
+  box.classList.add('has-text');
+  document.getElementById('voice-status').textContent = 'Processing…';
+
+  try {
+    const workerUrl = getWorkerUrl();
+    const formData = new FormData();
+    // Give the file an extension matching its mime type so the Worker can forward correctly
+    const ext = (audioBlob.type.includes('ogg') ? 'ogg' : audioBlob.type.includes('mp4') ? 'mp4' : 'webm');
+    formData.append('audio', audioBlob, `recording.${ext}`);
+
+    const res = await fetch(workerUrl, {
+      method: 'POST',
+      headers: { 'X-Target': 'cameravault-transcribe' },
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    // Worker returns { transcript, fields } where fields is the Claude-parsed JSON
+    if (data.transcript) {
+      currentTranscript = data.transcript;
+      box.textContent = data.transcript;
+      box.classList.add('has-text');
+    }
+
+    // Auto-apply fields if Claude parsed them
+    if (data.fields) {
+      applyParsedFields(data.fields);
+      showToast('Whisper transcribed — fields applied!');
+    } else {
+      showToast('Transcribed! Tap Apply to fill fields.');
+    }
+  } catch(e) {
+    box.textContent = currentTranscript || 'Transcription failed — you can type manually.';
+    box.classList.toggle('has-text', !!currentTranscript);
+    showToast('Transcription error: ' + (e.message || 'unknown'));
+  }
+  document.getElementById('voice-status').textContent = 'Tap to record a description';
+}
+
+// Apply pre-parsed fields from Claude (bypasses regex entirely)
+function applyParsedFields(fields) {
+  const set = (id, val) => { if (val && !document.getElementById(id).value) document.getElementById(id).value = val; };
+  set('f-make',    fields.make);
+  set('f-model',   fields.model);
+  set('f-year',    fields.year);
+  set('f-serial',  fields.serial);
+  set('f-country', fields.country);
+  set('f-lens',    fields.lens);
+  set('f-value',   fields.value);
+  if (fields.condition && !document.getElementById('f-condition').value)
+    document.getElementById('f-condition').value = fields.condition;
+  // Dropdowns — match against existing options
+  if (fields.format && !document.getElementById('f-format').value) {
+    const sel = document.getElementById('f-format');
+    const opt = Array.from(sel.options).find(o => o.text.toLowerCase().includes(fields.format.toLowerCase()));
+    if (opt) sel.value = opt.value;
+  }
+  if (fields.type && !document.getElementById('f-type').value) {
+    const sel = document.getElementById('f-type');
+    const opt = Array.from(sel.options).find(o => o.text.toLowerCase().includes(fields.type.toLowerCase()));
+    if (opt) sel.value = opt.value;
+  }
+  if (fields.notes && !document.getElementById('f-notes').value)
+    document.getElementById('f-notes').value = fields.notes;
+}
+
+// ── Fallback: Web Speech API (when no Worker URL) ──
 function startRecognitionSession() {
-  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return;
   recognition = new SR();
-  recognition.continuous = false;
+  recognition.continuous = true;
   recognition.interimResults = true;
   recognition.lang = 'en-US';
+  recognition.maxAlternatives = 1;
 
   recognition.onresult = ev => {
     let interim = '';
-    for (let i = 0; i < ev.results.length; i++) {
+    let finalPart = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
       const t = ev.results[i][0].transcript;
-      if (ev.results[i].isFinal) {
-        currentTranscript += t + ' ';
-        interim = '';
-      } else {
-        interim = t;
-      }
+      if (ev.results[i].isFinal) finalPart += t + ' ';
+      else interim = t;
     }
+    if (finalPart) currentTranscript += finalPart;
     const box = document.getElementById('transcript-box');
     box.textContent = currentTranscript + interim;
     box.classList.toggle('has-text', !!(currentTranscript + interim));
@@ -692,64 +825,71 @@ function startRecognitionSession() {
 
   recognition.onerror = e => {
     if (e.error === 'no-speech') {
-      if (isRecording) startRecognitionSession();
+      if (isRecording) { try { recognition.stop(); } catch(err) {} }
     } else if (e.error !== 'aborted') {
       showToast('Mic: ' + e.error);
       stopRecording();
     }
   };
 
-  recognition.onend = () => {
-    if (isRecording) startRecognitionSession();
-  };
-
+  recognition.onend = () => { if (isRecording) { try { recognition.start(); } catch(e) {} } };
   try { recognition.start(); } catch(e) {}
 }
 
 function startRecording() {
   if (isRecording) { stopRecording(); return; }
-  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
-  if (SR) {
-    currentTranscript = '';
-    isRecording = true;
-    setRecordingUI(true);
-    startRecognitionSession();
-    return;
+  currentTranscript = '';
+  const workerUrl = getWorkerUrl();
+  if (workerUrl) {
+    startWhisperRecording();
+  } else {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      isRecording = true;
+      setRecordingUI(true);
+      startRecognitionSession();
+    } else {
+      showToast('No mic API available — type description manually');
+    }
   }
-  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
-    mediaRecorder=new MediaRecorder(stream); mediaRecorder.start();
-    isRecording=true; setRecordingUI(true);
-    document.getElementById('transcript-box').textContent='Recording… type description manually after stopping.';
-  }).catch(()=>showToast('Mic access denied'));
 }
 
 function stopRecording() {
-  if(recognition){try{recognition.stop();}catch(e){} recognition=null;}
-  if(mediaRecorder&&mediaRecorder.state!=='inactive'){mediaRecorder.stop();mediaRecorder.stream.getTracks().forEach(t=>t.stop());mediaRecorder=null;}
-  isRecording=false; setRecordingUI(false);
+  if (recognition) { try { recognition.stop(); } catch(e) {} recognition = null; }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop(); // triggers onstop → sendToWhisper
+  } else {
+    mediaRecorder = null;
+  }
+  isRecording = false;
+  setRecordingUI(false);
 }
 
 function setRecordingUI(on) {
-  const btn=document.getElementById('record-btn');
-  btn.classList.toggle('recording',on); btn.textContent=on?'⏹️':'🎙️';
-  waveform.style.display=on?'flex':'none';
-  document.getElementById('voice-status').textContent=on?'e.g. "Make Leica, model M6, 1984, rangefinder, mint"':'Tap to record a description';
-  document.getElementById('voice-timer').textContent='';
-  if(on){
-    recordingSeconds=0;
-    recordingInterval=setInterval(()=>{
+  const btn = document.getElementById('record-btn');
+  btn.classList.toggle('recording', on);
+  btn.textContent = on ? '⏹️' : '🎙️';
+  waveform.style.display = on ? 'flex' : 'none';
+  const workerUrl = getWorkerUrl();
+  document.getElementById('voice-status').textContent = on
+    ? (workerUrl ? 'Recording — tap ⏹ when done speaking' : 'e.g. "Make Leica, model M6, 1984, rangefinder, mint"')
+    : 'Tap to record a description';
+  document.getElementById('voice-timer').textContent = '';
+  if (on) {
+    recordingSeconds = 0;
+    recordingInterval = setInterval(() => {
       recordingSeconds++;
-      const m=Math.floor(recordingSeconds/60),s=recordingSeconds%60;
-      document.getElementById('voice-timer').textContent=`${m}:${s.toString().padStart(2,'0')}`;
-    },1000);
-    waveInterval=setInterval(animateWave,120);
+      const m = Math.floor(recordingSeconds / 60), s = recordingSeconds % 60;
+      document.getElementById('voice-timer').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+    }, 1000);
+    waveInterval = setInterval(animateWave, 120);
   } else {
     clearInterval(recordingInterval); clearInterval(waveInterval);
-    waveform.querySelectorAll('.wave-bar').forEach(b=>b.style.height='4px');
+    waveform.querySelectorAll('.wave-bar').forEach(b => b.style.height = '4px');
   }
 }
 
-document.getElementById('record-btn').addEventListener('click',()=>isRecording?stopRecording():startRecording());
+document.getElementById('record-btn').addEventListener('click', () => isRecording ? stopRecording() : startRecording());
 
 function applyTranscript() {
   const text=currentTranscript||document.getElementById('transcript-box').textContent;
@@ -905,7 +1045,9 @@ document.getElementById('btn-add-back').addEventListener('click',()=>{ stopRecor
 document.getElementById('btn-detail-back').addEventListener('click',()=>showScreen('screen-gallery'));
 document.getElementById('btn-settings').addEventListener('click',()=>{
   const cfg=loadCfg();
-  if(cfg){ ['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId'].forEach(k=>{ const el=document.getElementById('cfg-'+k); if(el) el.value=cfg[k]||''; }); }
+  if(cfg){ ['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId'].forEach(k=>{ const el=document.getElementById('cfg-'+k); if(el) el.value=cfg[k]||''; });
+    const wu=document.getElementById('cfg-workerUrl'); if(wu) wu.value=cfg.workerUrl||'';
+  }
   showScreen('screen-setup');
 });
 document.getElementById('btn-setup-back').addEventListener('click',()=>showScreen('screen-gallery'));
