@@ -452,7 +452,31 @@ function connectFirebaseFromSetup() {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  // Push a history entry so the phone's back button can be intercepted.
+  // Gallery is the "home" — don't push a state for it so the back button
+  // exits the app naturally when the user is already at the gallery.
+  if (id !== 'screen-gallery') {
+    history.pushState({ screen: id }, '');
+  }
 }
+
+// Intercept the phone's hardware/gesture back button
+window.addEventListener('popstate', () => {
+  const active = document.querySelector('.screen.active');
+  if (!active || active.id === 'screen-gallery') return;
+
+  // Mirror the same logic as the on-screen back buttons
+  if (active.id === 'screen-add') {
+    stopRecording();
+    editingId ? openDetail(editingId) : showScreen('screen-gallery');
+  } else if (active.id === 'screen-detail') {
+    showScreen('screen-gallery');
+  } else if (active.id === 'screen-setup') {
+    showScreen('screen-gallery');
+  } else {
+    showScreen('screen-gallery');
+  }
+});
 
 // ═══════════════ GALLERY ═══════════════
 function renderGallery(filter = '') {
