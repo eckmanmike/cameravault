@@ -268,7 +268,7 @@
       </div>
       <div class="photo-strip" id="photo-strip" style="display:none"></div>
       <input type="file" id="photo-input" accept="image/*" capture="environment" />
-      <input type="file" id="photo-input-more" accept="image/*" capture="environment" />
+      <input type="file" id="photo-input-more" accept="image/*" capture="environment" style="display:none" />
     </div>
     <div class="section-block">
       <div class="section-label">Voice Description</div>
@@ -284,7 +284,7 @@
         <div id="voice-mode-badge" style="display:none;font-size:11px;padding:3px 8px;border-radius:20px;margin-bottom:6px;width:fit-content"></div>
         <div style="font-size:12px;color:var(--text3);line-height:1.6;padding:2px 0 4px">A good all-in-one sentence: <span style="color:var(--text2);font-style:italic">"This is a Leica M6, serial number 1654823, 1984, rangefinder, 35mm, made in Germany, mint condition."</span></div>
         <div class="transcript-box" id="transcript-box">Transcription will appear here…</div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px" id="transcript-actions">
           <button onclick="applyTranscript()" style="flex:1;background:var(--gold-dim);border:1px solid var(--gold);color:var(--gold);font-size:13px;padding:8px;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit">Apply to fields ↓</button>
           <button onclick="clearTranscript()" style="background:var(--bg2);border:1px solid rgba(255,255,255,.07);color:var(--text3);font-size:13px;padding:8px 14px;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit">Clear</button>
         </div>
@@ -800,14 +800,17 @@ function getWorkerUrl() {
 
 function updateVoiceModeBadge() {
   const badge=document.getElementById('voice-mode-badge');
+  const actions=document.getElementById('transcript-actions');
   if(!badge) return;
   const w=getWorkerUrl();
   if(w){
     badge.style.cssText='display:block;background:rgba(46,204,113,.15);color:#2ecc71;border:1px solid rgba(46,204,113,.3)';
     badge.textContent='✦ Whisper AI transcription active';
+    if(actions) actions.style.display='none';
   } else {
     badge.style.cssText='display:block;background:rgba(107,101,96,.2);color:var(--text3);border:1px solid rgba(255,255,255,.08)';
     badge.textContent='⚠ Basic browser speech — add Worker URL in Settings for better accuracy';
+    if(actions) actions.style.display='flex';
   }
 }
 
