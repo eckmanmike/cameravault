@@ -140,6 +140,21 @@
     .toast{position:fixed;bottom:calc(var(--safe-bottom) + 100px);left:50%;transform:translateX(-50%) translateY(20px);background:var(--bg4);color:var(--text);font-size:13px;padding:10px 18px;border-radius:20px;z-index:100;opacity:0;transition:opacity .2s,transform .2s;border:1px solid rgba(255,255,255,.1);white-space:nowrap;pointer-events:none}
     .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
     ::-webkit-scrollbar{width:0}
+    /* ── PIN lock screen ── */
+    #screen-lock{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:32px 24px}
+    .lock-logo{font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:2px;color:var(--gold);margin-bottom:4px}
+    .lock-sub{font-size:13px;color:var(--text3);margin-bottom:36px;text-align:center}
+    .lock-dots{display:flex;gap:14px;margin-bottom:28px}
+    .lock-dot{width:14px;height:14px;border-radius:50%;border:2px solid rgba(201,168,76,.4);background:transparent;transition:background .15s,border-color .15s}
+    .lock-dot.filled{background:var(--gold);border-color:var(--gold)}
+    .lock-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:100%;max-width:280px}
+    .lock-key{height:64px;border-radius:var(--radius);background:var(--bg3);border:1px solid rgba(255,255,255,.07);color:var(--text);font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;cursor:pointer;transition:background .1s,transform .1s;display:flex;align-items:center;justify-content:center;user-select:none}
+    .lock-key:active{background:var(--bg4);transform:scale(.95)}
+    .lock-key.lock-del{font-size:18px;font-family:'DM Sans',sans-serif}
+    .lock-key.lock-zero{grid-column:2}
+    .lock-error{font-size:13px;color:#e74c3c;min-height:20px;margin-bottom:4px;text-align:center;opacity:0;transition:opacity .2s}
+    .lock-error.show{opacity:1}
+    .lock-setup-link{margin-top:28px;font-size:12px;color:var(--text3);text-decoration:underline;cursor:pointer;text-align:center}
     .photo-strip{display:flex;gap:8px;margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
     .photo-strip::-webkit-scrollbar{display:none}
     .photo-thumb{width:64px;height:64px;border-radius:8px;object-fit:cover;flex-shrink:0;border:2px solid transparent;cursor:pointer;transition:border-color .15s}
@@ -160,6 +175,33 @@
 <body>
 
 <!-- ═══════════════ GALLERY ═══════════════ -->
+<!-- ── PIN Lock Screen ── -->
+<div id="screen-lock" style="display:none">
+  <div class="lock-logo">📷 CameraVault</div>
+  <div class="lock-sub">Enter your PIN to continue</div>
+  <div class="lock-dots" id="lock-dots">
+    <div class="lock-dot" id="ld0"></div>
+    <div class="lock-dot" id="ld1"></div>
+    <div class="lock-dot" id="ld2"></div>
+    <div class="lock-dot" id="ld3"></div>
+  </div>
+  <div class="lock-error" id="lock-error">Incorrect PIN</div>
+  <div class="lock-pad">
+    <div class="lock-key" onclick="lockKey('1')">1</div>
+    <div class="lock-key" onclick="lockKey('2')">2</div>
+    <div class="lock-key" onclick="lockKey('3')">3</div>
+    <div class="lock-key" onclick="lockKey('4')">4</div>
+    <div class="lock-key" onclick="lockKey('5')">5</div>
+    <div class="lock-key" onclick="lockKey('6')">6</div>
+    <div class="lock-key" onclick="lockKey('7')">7</div>
+    <div class="lock-key" onclick="lockKey('8')">8</div>
+    <div class="lock-key" onclick="lockKey('9')">9</div>
+    <div class="lock-key lock-zero" onclick="lockKey('0')">0</div>
+    <div class="lock-key lock-del" onclick="lockDel()">⌫</div>
+  </div>
+  <div class="lock-setup-link" onclick="showScreen('screen-setup')">First time? Set up Firebase first →</div>
+</div>
+
 <div class="screen active" id="screen-gallery">
   <div class="topbar">
     <div>
@@ -338,6 +380,7 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 
 <script>
 // ═══════════════ CONFIG STORAGE ═══════════════
@@ -1155,6 +1198,100 @@ function handleCustomOption(sel, listKey) {
   showToast('Added: ' + trimmed);
 }
 
+// ═══════════════ PIN LOCK ═══════════════
+const PIN_SESSION_KEY = 'cv_pin_session';
+let lockEntry = '';
+let firebaseAuth = null;
+
+async function hashPin(pin) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('cameravault:' + pin));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function lockKey(digit) {
+  if (lockEntry.length >= 4) return;
+  lockEntry += digit;
+  updateLockDots();
+  if (lockEntry.length === 4) setTimeout(submitPin, 120);
+}
+
+function lockDel() {
+  lockEntry = lockEntry.slice(0, -1);
+  updateLockDots();
+}
+
+function updateLockDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('ld' + i).classList.toggle('filled', i < lockEntry.length);
+  }
+}
+
+async function submitPin() {
+  const cfg = loadCfg();
+  if (!cfg || !cfg.databaseURL) {
+    // No Firebase config yet — let them through to setup screen
+    unlockApp(); return;
+  }
+  const entered = await hashPin(lockEntry);
+  // Read stored PIN hash directly from Firebase (unauthenticated read of /pin node is allowed by rules)
+  try {
+    const snap = await firebase.database().ref('pin').get();
+    const stored = snap.val();
+    if (!stored) {
+      // No PIN set yet — first time, accept any 4-digit entry and save it
+      await firebase.database().ref('pin').set(entered);
+      await signInAnon();
+      showToast('PIN set! You are now logged in.');
+      unlockApp(); return;
+    }
+    if (entered === stored) {
+      await signInAnon();
+      unlockApp();
+    } else {
+      lockEntry = '';
+      updateLockDots();
+      const err = document.getElementById('lock-error');
+      err.classList.add('show');
+      setTimeout(() => err.classList.remove('show'), 1800);
+    }
+  } catch(e) {
+    showToast('Error checking PIN: ' + e.message);
+    lockEntry = ''; updateLockDots();
+  }
+}
+
+async function signInAnon() {
+  try {
+    await firebaseAuth.signInAnonymously();
+    sessionStorage.setItem(PIN_SESSION_KEY, '1');
+  } catch(e) {
+    console.warn('Auth sign-in failed:', e.message);
+  }
+}
+
+function unlockApp() {
+  document.getElementById('screen-lock').style.display = 'none';
+  // Resume normal init
+  if (savedCfg && savedCfg.databaseURL) {
+    connectFirebase(savedCfg);
+    document.getElementById('setup-banner').style.display = 'none';
+  } else {
+    document.getElementById('setup-banner').style.display = 'flex';
+    setSyncState('');
+    showScreen('screen-setup');
+  }
+  if (!savedCfg && !cameras.length) seedDemoData();
+  renderGallery();
+}
+
+function seedDemoData() {
+  cameras = [
+    {id:'demo1',make:'Leica',model:'M6',year:'1984',condition:'Excellent',format:'35mm',type:'Rangefinder',serial:'1654823',value:'2800',lens:'50mm f/1.4 Summilux',notes:'Black chrome finish. Shutter and metering perfect.',photo:null,added:Date.now()-864e5*10,updated:Date.now()},
+    {id:'demo2',make:'Nikon',model:'F3',year:'1980',condition:'Good',format:'35mm',type:'SLR',serial:'2001234',value:'450',lens:'50mm f/1.4 Nikkor AI-s',notes:'Classic professional body. Light seals replaced 2022.',photo:null,added:Date.now()-864e5*5,updated:Date.now()},
+  ];
+  saveLocalDB(cameras);
+}
+
 // ═══════════════ INIT ═══════════════
 // Wire up connect button
 document.querySelector('.connect-btn').onclick=connectFirebaseFromSetup;
@@ -1162,7 +1299,6 @@ document.querySelector('.connect-btn').onclick=connectFirebaseFromSetup;
 const savedCfg=loadCfg();
 
 // One-time cleanup: strip any photos already stored in localStorage
-// to free up space (photos now live in Firebase only)
 try {
   const existing = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
   const hasPhotos = existing.some(c => c.photo || (c.photos && c.photos.length));
@@ -1171,27 +1307,36 @@ try {
     localStorage.setItem(DB_KEY, JSON.stringify(stripped));
   }
 } catch(e) {
-  // If localStorage is too full even to read, clear the camera cache entirely
-  // (Firebase will repopulate it on connect)
   try { localStorage.removeItem(DB_KEY); } catch(e2) {}
 }
-if(savedCfg&&savedCfg.databaseURL){
-  connectFirebase(savedCfg);
-  document.getElementById('setup-banner').style.display='none';
-} else {
-  document.getElementById('setup-banner').style.display='flex';
-  setSyncState('');
-}
 
-// Seed demo data if fresh install with no sync
-if(!savedCfg&&!cameras.length){
-  cameras=[
-    {id:'demo1',make:'Leica',model:'M6',year:'1984',condition:'Excellent',format:'35mm',type:'Rangefinder',serial:'1654823',value:'2800',lens:'50mm f/1.4 Summilux',notes:'Black chrome finish. Shutter and metering perfect.',photo:null,added:Date.now()-864e5*10,updated:Date.now()},
-    {id:'demo2',make:'Nikon',model:'F3',year:'1980',condition:'Good',format:'35mm',type:'SLR',serial:'2001234',value:'450',lens:'50mm f/1.4 Nikkor AI-s',notes:'Classic professional body. Light seals replaced 2022.',photo:null,added:Date.now()-864e5*5,updated:Date.now()},
-  ];
-  saveLocalDB(cameras);
-}
-renderGallery();
+// Boot: show PIN lock if Firebase is configured, else go straight to setup
+(function boot() {
+  const cfg = loadCfg();
+  if (!cfg || !cfg.databaseURL) {
+    // No config yet — skip lock, go to setup
+    document.getElementById('setup-banner').style.display = 'flex';
+    setSyncState('');
+    showScreen('screen-setup');
+    if (!cameras.length) seedDemoData();
+    renderGallery();
+    return;
+  }
+
+  // Init Firebase app early so we can use Auth before connectFirebase runs
+  let app;
+  try { app = firebase.app(); } catch { app = firebase.initializeApp(cfg); }
+  firebaseAuth = firebase.auth(app);
+
+  // If already signed in this session, skip PIN
+  if (sessionStorage.getItem(PIN_SESSION_KEY)) {
+    unlockApp(); return;
+  }
+
+  // Show PIN screen
+  document.getElementById('screen-lock').style.display = 'flex';
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+})();
 </script>
 </body>
 </html>
