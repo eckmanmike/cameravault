@@ -1229,17 +1229,18 @@ function updateLockDots() {
 async function submitPin() {
   const cfg = loadCfg();
   if (!cfg || !cfg.databaseURL) {
-    // No Firebase config yet — let them through to setup screen
     unlockApp(); return;
   }
   const entered = await hashPin(lockEntry);
-  // Read stored PIN hash directly from Firebase (unauthenticated read of /pin node is allowed by rules)
   try {
-    const snap = await firebase.database().ref('pin').get();
+    // Use the already-initialized app instance
+    let app;
+    try { app = firebase.app(); } catch { app = firebase.initializeApp(cfg); }
+    const db = firebase.database(app);
+    const snap = await db.ref('pin').get();
     const stored = snap.val();
     if (!stored) {
-      // No PIN set yet — first time, accept any 4-digit entry and save it
-      await firebase.database().ref('pin').set(entered);
+      await db.ref('pin').set(entered);
       await signInAnon();
       showToast('PIN set! You are now logged in.');
       unlockApp(); return;
@@ -1271,14 +1272,15 @@ async function signInAnon() {
 
 function unlockApp() {
   document.getElementById('screen-lock').style.display = 'none';
-  // Resume normal init
+  // Make the gallery screen active before doing anything else
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-gallery').classList.add('active');
   if (savedCfg && savedCfg.databaseURL) {
     connectFirebase(savedCfg);
     document.getElementById('setup-banner').style.display = 'none';
   } else {
     document.getElementById('setup-banner').style.display = 'flex';
     setSyncState('');
-    showScreen('screen-setup');
   }
   if (!savedCfg && !cameras.length) seedDemoData();
   renderGallery();
