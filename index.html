@@ -545,7 +545,10 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById(id);
   el.classList.add('active');
-  if (id === 'screen-add') el.scrollTop = 0;
+  if (id === 'screen-add') {
+    const scroller = el.querySelector('.add-scroll');
+    if (scroller) scroller.scrollTop = 0;
+  }
   if (id !== 'screen-gallery') {
     history.pushState({ screen: id }, '');
   }
