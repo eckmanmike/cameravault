@@ -543,7 +543,9 @@ function connectFirebaseFromSetup() {
 // ═══════════════ NAVIGATION ═══════════════
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const el = document.getElementById(id);
+  el.classList.add('active');
+  if (id === 'screen-add') el.scrollTop = 0;
   if (id !== 'screen-gallery') {
     history.pushState({ screen: id }, '');
   }
@@ -1041,9 +1043,11 @@ function startRecording() {
 }
 
 function stopRecording() {
+  isRecording=false;
+  setRecordingUI(false);
   if(recognition){try{recognition.stop();}catch(e){} recognition=null;}
   if(mediaRecorder&&mediaRecorder.state!=='inactive'){ mediaRecorder.stop(); }
-  else { mediaRecorder=null; isRecording=false; setRecordingUI(false); }
+  else { mediaRecorder=null; }
 }
 
 function setRecordingUI(on) {
