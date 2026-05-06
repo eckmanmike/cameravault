@@ -766,12 +766,15 @@ function openAdd() {
   showScreen('screen-add');
 }
 
+let _savingCamera = false;
+
 async function saveCamera() {
+  if (_savingCamera) return;
+
   const make = document.getElementById('f-make').value.trim();
   const model = document.getElementById('f-model').value.trim();
   if (!make && !model) { showToast('Please add Make or Model'); return; }
 
-  // Sanitize format/type — strip __add_new__ sentinel if somehow left behind
   const rawFormat = document.getElementById('f-format').value;
   const rawType   = document.getElementById('f-type').value;
 
@@ -794,29 +797,40 @@ async function saveCamera() {
     updated: Date.now(),
   };
 
+  _savingCamera = true;
+  const saveBtn = document.querySelector('.save-btn');
+  const origLabel = saveBtn ? saveBtn.textContent : '';
+  if (saveBtn) { saveBtn.textContent = 'Saving…'; saveBtn.style.opacity = '0.6'; saveBtn.style.pointerEvents = 'none'; }
+
   try {
+    if (!dbRef || !isSynced) {
+      showToast('⚠️ Not connected to database. Check your network and try again.');
+      return;
+    }
+
+    try {
+      await dbRef.child(cam.id).set(cam);
+      setSyncState('synced');
+    } catch(firebaseErr) {
+      console.warn('Firebase write failed, retrying without photos:', firebaseErr.message);
+      const camNoPhoto = {...cam, photos: [], photo: null};
+      try {
+        await dbRef.child(cam.id).set(camNoPhoto);
+        setSyncState('synced');
+        showToast('Saved — photo stored locally only (too large for sync)');
+        cam.photos = []; cam.photo = null;
+      } catch(retryErr) {
+        setSyncState('error');
+        const msg = retryErr.message || 'unknown error';
+        showToast('❌ Save failed — please try again. (' + msg + ')');
+        console.error('Firebase write failed after retry:', retryErr);
+        return;
+      }
+    }
+
     if (editingId) cameras = cameras.map(c=>c.id===editingId?cam:c);
     else cameras.push(cam);
     saveLocalDB(cameras);
-
-    if (dbRef) {
-      try {
-        await dbRef.child(cam.id).set(cam);
-        setSyncState('synced');
-      } catch(firebaseErr) {
-        // If Firebase rejects (likely photo too large), retry without photo
-        console.warn('Firebase write failed, retrying without photos:', firebaseErr.message);
-        const camNoPhoto = {...cam, photos: [], photo: null};
-        try {
-          await dbRef.child(cam.id).set(camNoPhoto);
-          setSyncState('synced');
-          showToast('Saved — photo stored locally only (too large for sync)');
-        } catch(retryErr) {
-          setSyncState('error');
-          showToast('Saved locally — sync failed: ' + retryErr.message);
-        }
-      }
-    }
 
     renderGallery();
     showToast(editingId ? 'Camera updated!' : 'Camera added!');
@@ -824,8 +838,11 @@ async function saveCamera() {
     showScreen('screen-gallery');
 
   } catch(e) {
-    showToast('Error saving: ' + e.message);
+    showToast('❌ Error saving: ' + e.message);
     console.error('saveCamera error:', e);
+  } finally {
+    _savingCamera = false;
+    if (saveBtn) { saveBtn.textContent = origLabel; saveBtn.style.opacity = ''; saveBtn.style.pointerEvents = ''; }
   }
 }
 
