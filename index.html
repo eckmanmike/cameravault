@@ -859,7 +859,7 @@ function resizeAndStore(file, onDone) {
   reader.onload = ev => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 800;
+      const MAX = 1200;
       let {width:w, height:h} = img;
       if (w > MAX || h > MAX) {
         if (w > h) { h = Math.round(h*(MAX/w)); w = MAX; }
@@ -868,7 +868,7 @@ function resizeAndStore(file, onDone) {
       const canvas = document.createElement('canvas');
       canvas.width=w; canvas.height=h;
       canvas.getContext('2d').drawImage(img,0,0,w,h);
-      onDone(canvas.toDataURL('image/jpeg', 0.75));
+      onDone(canvas.toDataURL('image/jpeg', 0.85));
     };
     img.src = ev.target.result;
   };
