@@ -833,11 +833,9 @@ async function saveCamera() {
       }
     }
 
-    if (editingId) cameras = cameras.map(c=>c.id===editingId?cam:c);
-    else cameras.push(cam);
-    saveLocalDB(cameras);
-
-    renderGallery();
+    // Don't manually update cameras[] or call renderGallery() here —
+    // the Firebase onValue listener will fire after the write and do both,
+    // preventing a duplicate entry appearing in the gallery.
     showToast(editingId ? 'Camera updated!' : 'Camera added!');
     stopRecording();
     showScreen('screen-gallery');
