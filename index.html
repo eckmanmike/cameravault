@@ -546,8 +546,10 @@ function showScreen(id) {
   const el = document.getElementById(id);
   el.classList.add('active');
   if (id === 'screen-add') {
+    // Use rAF so the scroll reset runs after the browser has finished
+    // reflowing the form content (photos, dropdowns, etc.)
     const scroller = el.querySelector('.add-scroll');
-    if (scroller) scroller.scrollTop = 0;
+    if (scroller) requestAnimationFrame(() => { scroller.scrollTop = 0; });
   }
   if (id !== 'screen-gallery') {
     history.pushState({ screen: id }, '');
@@ -957,15 +959,18 @@ function updateVoiceModeBadge() {
 let audioChunks=[];
 
 function startWhisperRecording() {
+  // Set state synchronously so stopRecording() works immediately if tapped
+  isRecording=true; setRecordingUI(true);
   navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+    // If stop was tapped before mic permission resolved, abort cleanly
+    if(!isRecording){ stream.getTracks().forEach(t=>t.stop()); return; }
     audioChunks=[];
     const mimeType=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'].find(m=>MediaRecorder.isTypeSupported(m))||'';
     mediaRecorder=new MediaRecorder(stream, mimeType?{mimeType}:{});
     mediaRecorder.ondataavailable=e=>{if(e.data.size>0)audioChunks.push(e.data);};
     mediaRecorder.onstop=()=>{ stream.getTracks().forEach(t=>t.stop()); sendToWhisper(new Blob(audioChunks,{type:mediaRecorder.mimeType||'audio/webm'})); };
     mediaRecorder.start(250);
-    isRecording=true; setRecordingUI(true);
-  }).catch(()=>showToast('Mic access denied'));
+  }).catch(()=>{ isRecording=false; setRecordingUI(false); showToast('Mic access denied'); });
 }
 
 async function sendToWhisper(audioBlob) {
