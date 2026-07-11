@@ -413,6 +413,71 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 
 <script>
+// ═══════════════ PHOTO CACHE (IndexedDB) ═══════════════
+// Stores { id, updated, photos, photo } per camera.
+// Only re-fetches from Firebase when updated timestamp has changed.
+const PhotoCache = (() => {
+  const DB_NAME = 'cvault_photo_cache';
+  const STORE   = 'photos';
+  const VERSION = 1;
+  let _db = null;
+
+  function open() {
+    if (_db) return Promise.resolve(_db);
+    return new Promise((res, rej) => {
+      const req = indexedDB.open(DB_NAME, VERSION);
+      req.onupgradeneeded = e => {
+        e.target.result.createObjectStore(STORE, { keyPath: 'id' });
+      };
+      req.onsuccess = e => { _db = e.target.result; res(_db); };
+      req.onerror   = e => rej(e.target.error);
+    });
+  }
+
+  async function get(id) {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const tx  = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).get(id);
+      req.onsuccess = e => res(e.target.result || null);
+      req.onerror   = e => rej(e.target.error);
+    });
+  }
+
+  async function put(entry) {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const tx  = db.transaction(STORE, 'readwrite');
+      const req = tx.objectStore(STORE).put(entry);
+      req.onsuccess = () => res();
+      req.onerror   = e => rej(e.target.error);
+    });
+  }
+
+  async function remove(id) {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const tx  = db.transaction(STORE, 'readwrite');
+      const req = tx.objectStore(STORE).delete(id);
+      req.onsuccess = () => res();
+      req.onerror   = e => rej(e.target.error);
+    });
+  }
+
+  // Return all cached IDs → used to prune deleted cameras
+  async function allIds() {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const tx  = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).getAllKeys();
+      req.onsuccess = e => res(e.target.result);
+      req.onerror   = e => rej(e.target.error);
+    });
+  }
+
+  return { get, put, remove, allIds };
+})();
+</script>
 // ═══════════════ CONFIG STORAGE ═══════════════
 const CFG_KEY = 'cv_firebase_cfg';
 const DB_KEY  = 'cameravault_v1';
@@ -457,11 +522,68 @@ function setSyncState(state) {
 }
 
 // ═══════════════ FIREBASE ═══════════════
+
+// Strip photos from a camera object — used to build the lightweight manifest
+function stripPhotos(cam) {
+  const { photos, photo, ...meta } = cam;
+  return meta;
+}
+
+// Merge cached photos back into a stripped camera object
+function attachCachedPhotos(cam, cached) {
+  return { ...cam, photos: cached?.photos || [], photo: cached?.photo || null };
+}
+
+async function syncWithCache(snapshot) {
+  const data = snapshot.val();
+  const raw  = data ? Object.values(data) : [];
+
+  // Build a map of what Firebase currently has (full records)
+  const fbMap = {};
+  raw.forEach(c => { fbMap[c.id] = c; });
+
+  // Prune cache entries for cameras that no longer exist in Firebase
+  const cachedIds = await PhotoCache.allIds();
+  await Promise.all(
+    cachedIds.filter(id => !fbMap[id]).map(id => PhotoCache.remove(id))
+  );
+
+  // For each camera: use cached photos if updated matches, else cache new photos
+  const resolved = await Promise.all(raw.map(async cam => {
+    const cached = await PhotoCache.get(cam.id);
+    const hasPhotos = (cam.photos && cam.photos.length) || cam.photo;
+
+    if (cached && cached.updated === cam.updated) {
+      // Cache hit — attach cached photos to the (possibly updated) metadata
+      return attachCachedPhotos(cam, cached);
+    } else {
+      // Cache miss or stale — store fresh photos
+      if (hasPhotos) {
+        await PhotoCache.put({
+          id:      cam.id,
+          updated: cam.updated,
+          photos:  cam.photos || [],
+          photo:   cam.photo  || null,
+        });
+      } else if (cached) {
+        // Camera now has no photos — remove stale cache entry
+        await PhotoCache.remove(cam.id);
+      }
+      return cam;
+    }
+  }));
+
+  cameras = resolved;
+  saveLocalDB(cameras.map(stripPhotos)); // keep localStorage lean — no photos
+  renderGallery();
+  setSyncState('synced');
+  isSynced = true;
+}
+
 function connectFirebase(cfg) {
   cfg = cfg || loadCfg();
   if (!cfg || !cfg.databaseURL) return false;
   try {
-    // Initialize (may already be initialized)
     let app;
     try { app = firebase.app(); }
     catch { app = firebase.initializeApp(cfg); }
@@ -471,14 +593,18 @@ function connectFirebase(cfg) {
 
     setSyncState('syncing');
 
-    // Listen for real-time updates from Firebase → local
+    // Real-time listener — photos served from IndexedDB cache where possible
     dbRef.on('value', snapshot => {
-      const data = snapshot.val();
-      cameras = data ? Object.values(data) : [];
-      saveLocalDB(cameras);
-      renderGallery();
-      setSyncState('synced');
-      isSynced = true;
+      syncWithCache(snapshot).catch(err => {
+        console.error('Cache sync error:', err);
+        // Fallback: render directly from Firebase data
+        const data = snapshot.val();
+        cameras = data ? Object.values(data) : [];
+        saveLocalDB(cameras);
+        renderGallery();
+        setSyncState('synced');
+        isSynced = true;
+      });
     }, err => {
       console.error('Firebase read error:', err);
       setSyncState('error');
