@@ -190,6 +190,7 @@
     .sort-bar::-webkit-scrollbar{display:none}
     .sort-chip{font-size:11px;padding:5px 11px;border-radius:20px;border:1px solid rgba(255,255,255,.09);color:var(--text3);cursor:pointer;white-space:nowrap;background:transparent;font-family:'DM Sans',sans-serif;transition:all .15s;flex-shrink:0}
     .sort-chip.active{background:var(--gold-dim);border-color:rgba(201,168,76,.4);color:var(--gold)}
+  @keyframes ldot{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
   </style>
 </head>
 <body>
@@ -220,6 +221,17 @@
     <div class="lock-key lock-del" onclick="lockDel()">⌫</div>
   </div>
   <div class="lock-setup-link" onclick="showScreen('screen-setup')">First time? Set up Firebase first →</div>
+</div>
+
+<!-- ── Loading Screen ── -->
+<div id="screen-loading" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:150;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+  <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--gold);letter-spacing:2px">CAMERAVAULT</div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <div class="loading-dot" style="width:8px;height:8px;border-radius:50%;background:var(--gold);animation:ldot .9s ease-in-out infinite"></div>
+    <div class="loading-dot" style="width:8px;height:8px;border-radius:50%;background:var(--gold);animation:ldot .9s ease-in-out .2s infinite"></div>
+    <div class="loading-dot" style="width:8px;height:8px;border-radius:50%;background:var(--gold);animation:ldot .9s ease-in-out .4s infinite"></div>
+  </div>
+  <div style="font-size:13px;color:var(--text3);font-family:'DM Sans',sans-serif">Loading collection…</div>
 </div>
 
 <div class="screen active" id="screen-gallery">
@@ -554,21 +566,17 @@ async function syncWithCache(snapshot) {
     const hasPhotos = (cam.photos && cam.photos.length) || cam.photo;
 
     if (cached && cached.updated === cam.updated) {
-      // Cache hit — attach cached photos to the (possibly updated) metadata
-      return attachCachedPhotos(cam, cached);
+      // Cache hit — restore full record from cache
+      return cached._full ? cached._full : attachCachedPhotos(cam, cached);
     } else {
-      // Cache miss or stale — store fresh photos
-      if (hasPhotos) {
-        await PhotoCache.put({
-          id:      cam.id,
-          updated: cam.updated,
-          photos:  cam.photos || [],
-          photo:   cam.photo  || null,
-        });
-      } else if (cached) {
-        // Camera now has no photos — remove stale cache entry
-        await PhotoCache.remove(cam.id);
-      }
+      // Cache miss or stale — store full record including metadata
+      await PhotoCache.put({
+        id:      cam.id,
+        updated: cam.updated,
+        photos:  cam.photos || [],
+        photo:   cam.photo  || null,
+        _full:   cam,
+      });
       return cam;
     }
   }));
@@ -1500,20 +1508,32 @@ async function signInAnon() {
   }
 }
 
-function unlockApp() {
+async function unlockApp() {
   document.getElementById('screen-lock').style.display = 'none';
-  // Make the gallery screen active before doing anything else
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById('screen-gallery').classList.add('active');
+
   if (savedCfg && savedCfg.databaseURL) {
-    connectFirebase(savedCfg);
+    // Show loading screen while cache reads happen
+    document.getElementById('screen-loading').style.display = 'flex';
     document.getElementById('setup-banner').style.display = 'none';
+
+    // Start Firebase connect in parallel — don't wait for it
+    connectFirebase(savedCfg);
+
+    // Run cache preload — this is the 1037 IndexedDB reads
+    await preloadFromCache();
+
+    // Cache done — hide loading screen, show gallery
+    document.getElementById('screen-loading').style.display = 'none';
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-gallery').classList.add('active');
   } else {
     document.getElementById('setup-banner').style.display = 'flex';
     setSyncState('');
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-gallery').classList.add('active');
+    if (!cameras.length) seedDemoData();
+    renderGallery();
   }
-  if (!savedCfg && !cameras.length) seedDemoData();
-  renderGallery();
 }
 
 function seedDemoData() {
@@ -1595,9 +1615,6 @@ async function preloadFromCache() {
   let app;
   try { app = firebase.app(); } catch { app = firebase.initializeApp(cfg); }
   firebaseAuth = firebase.auth(app);
-
-  // Pre-render from IndexedDB cache immediately — don't wait for Firebase
-  preloadFromCache();
 
   // If already signed in this session, skip PIN
   if (sessionStorage.getItem(PIN_SESSION_KEY)) {
