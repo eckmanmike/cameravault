@@ -1560,6 +1560,24 @@ try {
   try { localStorage.removeItem(DB_KEY); } catch(e2) {}
 }
 
+// ── Pre-load cached photos from IndexedDB before Firebase connects ──
+async function preloadFromCache() {
+  try {
+    const ids = await PhotoCache.allIds();
+    if (!ids.length) return;
+    const cached = await Promise.all(ids.map(id => PhotoCache.get(id)));
+    // Merge cached photos into the cameras array already loaded from localStorage
+    cameras = cameras.map(cam => {
+      const entry = cached.find(c => c && c.id === cam.id);
+      if (entry) return { ...cam, photos: entry.photos || [], photo: entry.photo || null };
+      return cam;
+    });
+    renderGallery();
+  } catch(e) {
+    console.warn('Cache preload failed:', e);
+  }
+}
+
 // Boot: show PIN lock if Firebase is configured, else go straight to setup
 (function boot() {
   const cfg = loadCfg();
@@ -1577,6 +1595,9 @@ try {
   let app;
   try { app = firebase.app(); } catch { app = firebase.initializeApp(cfg); }
   firebaseAuth = firebase.auth(app);
+
+  // Pre-render from IndexedDB cache immediately — don't wait for Firebase
+  preloadFromCache();
 
   // If already signed in this session, skip PIN
   if (sessionStorage.getItem(PIN_SESSION_KEY)) {
