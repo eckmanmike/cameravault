@@ -589,6 +589,9 @@ function connectFirebase(cfg) {
         renderGallery();
         setSyncState('synced');
         isSynced = true;
+        // Hide loading screen if still showing (cache didn't have photos)
+        const ls = document.getElementById('screen-loading');
+        if (ls) ls.style.display = 'none';
       } catch(err) {
         console.error('Sync error:', err);
         setSyncState('error');
@@ -1520,8 +1523,11 @@ async function preloadFromCache() {
     const ids = await PhotoCache.allIds();
     if (!ids.length) return;
     const entries = await Promise.all(ids.map(id => PhotoCache.get(id)));
-    const valid = entries.filter(e => e && e._full);
+    // Only use entries that have both full metadata AND actual photos
+    const valid = entries.filter(e => e && e._full && (e.photos?.length || e.photo));
     if (!valid.length) return;
+    // Only render from cache if at least half the collection has photos cached
+    // This avoids showing a photoless gallery when cache is stale
     if (valid.length < ids.length * 0.5) return;
     cameras = valid.map(entry => ({...entry._full, photos: entry.photos||[], photo: entry.photo||null}));
     renderGallery();
@@ -1534,20 +1540,26 @@ async function unlockApp() {
   document.getElementById('screen-lock').style.display = 'none';
 
   if (savedCfg && savedCfg.databaseURL) {
-    // Show loading screen while cache reads happen
     document.getElementById('screen-loading').style.display = 'flex';
     document.getElementById('setup-banner').style.display = 'none';
 
-    // Start Firebase connect in parallel — don't wait for it
-    connectFirebase(savedCfg);
-
-    // Run cache preload while loading screen shows
-    await preloadFromCache();
-
-    // Cache done — hide loading screen, show gallery
-    document.getElementById('screen-loading').style.display = 'none';
+    // Show gallery screen now (hidden behind loading screen)
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById('screen-gallery').classList.add('active');
+
+    // Try to pre-render from cache (only if cache has real photos)
+    await preloadFromCache();
+
+    // If cache gave us cameras with photos, hide loading screen immediately
+    const cacheHasPhotos = cameras.some(c => c.photos?.length || c.photo);
+    if (cacheHasPhotos) {
+      document.getElementById('screen-loading').style.display = 'none';
+    }
+
+    // Connect Firebase — when onValue fires it will re-render with fresh data
+    // and hide the loading screen if still showing
+    connectFirebase(savedCfg);
+
   } else {
     document.getElementById('setup-banner').style.display = 'flex';
     setSyncState('');
