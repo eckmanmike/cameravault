@@ -479,29 +479,35 @@ function connectFirebase(cfg) {
       try {
         const data = snapshot.val();
         const metaList = data ? Object.values(data) : [];
-        // Merge photos from IndexedDB cache or fetch individually from /photos
+
+        // Build a fast lookup of what's already in memory (id → camera with photos)
+        const inMemory = {};
+        cameras.forEach(c => { inMemory[c.id] = c; });
+
         const resolved = await Promise.all(metaList.map(async meta => {
-          // Check IndexedDB cache first
+          // In-memory hit — same updated timestamp means nothing changed, reuse immediately
+          const existing = inMemory[meta.id];
+          if (existing && existing.updated === meta.updated) {
+            return existing;
+          }
+          // Check IndexedDB cache next
           try {
             const cached = await PhotoCache.get(meta.id);
             if (cached && cached.updated === meta.updated) {
-              // Cache hit — attach cached photos
               return { ...meta, photos: cached.photos || [], photo: cached.photo || null };
             }
-          } catch(e) { /* cache unavailable — fall through to Firebase fetch */ }
-          // Cache miss or stale — fetch this camera's photos from /photos/{id}
+          } catch(e) { /* cache unavailable — fall through */ }
+          // Cache miss or stale — fetch from /photos/{id}
           try {
             const photoSnap = await photosRef.child(meta.id).get();
             const photoData = photoSnap.val();
             const photos = photoData?.photos || [];
             const photo  = photoData?.photo  || null;
-            // Update cache
             try {
               await PhotoCache.put({ id: meta.id, updated: meta.updated, photos, photo, _full: {...meta, photos, photo} });
-            } catch(e) { /* cache write failed — not critical */ }
+            } catch(e) {}
             return { ...meta, photos, photo };
           } catch(e) {
-            // /photos fetch failed — return metadata without photos
             return { ...meta, photos: [], photo: null };
           }
         }));
