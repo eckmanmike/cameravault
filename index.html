@@ -223,6 +223,10 @@
   <div class="lock-setup-link" onclick="showScreen('screen-setup')">First time? Set up Firebase first →</div>
 </div>
 
+<!-- ── Debug Overlay ── -->
+<div id="debug-overlay" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:rgba(0,0,0,.85);color:#0f0;font-family:monospace;font-size:11px;padding:8px;max-height:40vh;overflow-y:auto;border-top:1px solid #0f0"></div>
+<button id="debug-toggle" onclick="document.getElementById('debug-overlay').style.display=document.getElementById('debug-overlay').style.display==='none'?'block':'none'" style="position:fixed;bottom:0;right:0;z-index:10000;background:#c9a84c;color:#111;border:none;padding:4px 8px;font-size:11px;font-family:monospace">DBG</button>
+
 <!-- ── Loading Screen ── -->
 <div id="screen-loading" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:150;flex-direction:column;align-items:center;justify-content:center;gap:16px">
   <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--gold);letter-spacing:2px">CAMERAVAULT</div>
@@ -479,6 +483,17 @@ const PhotoCache = (() => {
   return { get, put, remove, allIds };
 })();
 
+// ═══════════════ DEBUG LOGGER ═══════════════
+function dbg(msg) {
+  console.log(msg);
+  const el = document.getElementById('debug-overlay');
+  if (!el) return;
+  const line = document.createElement('div');
+  line.textContent = new Date().toISOString().slice(11,23) + ' ' + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
 // ═══════════════ CONFIG STORAGE ═══════════════
 const CFG_KEY = 'cv_firebase_cfg';
 const DB_KEY  = 'cameravault_v1';
@@ -541,13 +556,15 @@ function connectFirebase(cfg) {
 
     setSyncState('syncing');
     _initialSync = true; // flag first onValue as needing full photo resolution
+    dbg('connectFirebase called, _initialSync=true');
 
     // Ensure auth is established before starting listeners —
     // without this, /photos reads fail silently on mobile Chrome
     // because Firebase security rules require auth != null
     firebase.auth(app).signInAnonymously()
-      .catch(e => console.warn('Auth skipped:', e.message))
+      .catch(e => { console.warn('Auth skipped:', e.message); dbg('Auth FAILED: '+e.message); })
       .finally(() => {
+    dbg('Auth finally fired — attaching onValue listener');
 
     // Listen to /cameras only — metadata, no photos (~2-3MB instead of ~142MB)
     dbRef.on('value', async snapshot => {
@@ -558,6 +575,7 @@ function connectFirebase(cfg) {
         // On first sync after boot, skip in-memory map — cameras[] is from
         // localStorage (no photos) so matching timestamps would return photoless objects.
         // On subsequent real-time updates, in-memory map is valid and safe to use.
+        dbg('onValue fired, metaList.length='+metaList.length+' isFirst='+_initialSync);
         const isFirst = _initialSync;
         _initialSync = false;
         const inMemory = {};
@@ -590,6 +608,8 @@ function connectFirebase(cfg) {
             return { ...meta, photos: [], photo: null };
           }
         }));
+        const withPhotos = resolved.filter(c=>c.photos?.length||c.photo).length;
+        dbg('resolved '+resolved.length+' cameras, '+withPhotos+' have photos');
         cameras = resolved;
         saveLocalDB(cameras.map(c => { const {photos,photo,...m}=c; return m; }));
         renderGallery();
@@ -1527,17 +1547,22 @@ async function signInAnon() {
 async function preloadFromCache() {
   try {
     const ids = await PhotoCache.allIds();
+    dbg('preloadFromCache: '+ids.length+' IDs in IndexedDB');
     if (!ids.length) return;
     const entries = await Promise.all(ids.map(id => PhotoCache.get(id)));
+    const withFull = entries.filter(e=>e&&e._full).length;
+    const withPhotos = entries.filter(e=>e&&(e.photos?.length||e.photo)).length;
+    dbg('cache entries: '+withFull+' have _full, '+withPhotos+' have photos');
     // Only use entries that have both full metadata AND actual photos
     const valid = entries.filter(e => e && e._full && (e.photos?.length || e.photo));
-    if (!valid.length) return;
-    // Only render from cache if at least half the collection has photos cached
-    // This avoids showing a photoless gallery when cache is stale
-    if (valid.length < ids.length * 0.5) return;
+    dbg('valid entries for preload: '+valid.length+' (need >'+(entries.length*0.5)+')');
+    if (!valid.length) { dbg('preload: no valid entries, skipping'); return; }
+    if (valid.length < ids.length * 0.5) { dbg('preload: not enough valid entries, skipping'); return; }
     cameras = valid.map(entry => ({...entry._full, photos: entry.photos||[], photo: entry.photo||null}));
+    dbg('preload: rendered '+cameras.length+' cameras from cache');
     renderGallery();
   } catch(e) {
+    dbg('preload ERROR: '+e.message);
     console.warn('Cache preload failed:', e);
   }
 }
@@ -1562,6 +1587,7 @@ async function unlockApp() {
       document.getElementById('screen-loading').style.display = 'none';
     }
 
+    dbg('unlockApp: calling connectFirebase');
     // Connect Firebase — onValue will fetch photos and re-render
     connectFirebase(savedCfg);
 
