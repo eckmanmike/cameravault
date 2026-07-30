@@ -225,7 +225,7 @@
 
 <!-- ── Debug Overlay ── -->
 <div id="debug-overlay" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:rgba(0,0,0,.85);color:#0f0;font-family:monospace;font-size:11px;padding:8px;max-height:40vh;overflow-y:auto;border-top:1px solid #0f0"></div>
-<button id="debug-toggle" onclick="document.getElementById('debug-overlay').style.display=document.getElementById('debug-overlay').style.display==='none'?'block':'none'" style="position:fixed;bottom:0;right:0;z-index:10000;background:#c9a84c;color:#111;border:none;padding:4px 8px;font-size:11px;font-family:monospace">DBG</button>
+<button id="debug-toggle" onclick="document.getElementById('debug-overlay').style.display=document.getElementById('debug-overlay').style.display==='none'?'block':'none'" style="position:fixed;bottom:0;right:0;z-index:10000;background:#c9a84c;color:#111;border:none;padding:4px 8px;font-size:11px;font-family:monospace;display:none">DBG</button>
 
 <!-- ── Loading Screen ── -->
 <div id="screen-loading" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:150;flex-direction:column;align-items:center;justify-content:center;gap:16px">
@@ -338,6 +338,23 @@
 
     <button class="connect-btn" onclick="connectFirebase()">Connect & Sync ☁️</button>
     <button class="skip-btn" onclick="showScreen('screen-gallery')">Use offline only</button>
+
+    <div style="margin-top:28px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07)">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:12px">Developer</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0">
+        <div>
+          <div style="font-size:14px;color:var(--text2)">Debug Overlay</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Shows internal log on the gallery screen</div>
+        </div>
+        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0">
+          <input type="checkbox" id="debug-toggle-setting" onchange="toggleDebugMode(this.checked)" style="opacity:0;width:0;height:0;position:absolute"/>
+          <span id="debug-toggle-track" style="position:absolute;inset:0;border-radius:12px;background:var(--bg3);border:1px solid rgba(255,255,255,.1);transition:background .2s;cursor:pointer">
+            <span id="debug-toggle-thumb" style="position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--text3);transition:all .2s"></span>
+          </span>
+        </label>
+      </div>
+      <button onclick="clearDebugLog()" style="width:100%;background:var(--bg2);border:1px solid rgba(255,255,255,.07);color:var(--text3);font-size:13px;padding:10px;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit;margin-top:4px">Clear Debug Log</button>
+    </div>
   </div>
 </div>
 
@@ -486,12 +503,42 @@ const PhotoCache = (() => {
 // ═══════════════ DEBUG LOGGER ═══════════════
 function dbg(msg) {
   console.log(msg);
+  if (!_debugMode) return;
   const el = document.getElementById('debug-overlay');
   if (!el) return;
   const line = document.createElement('div');
   line.textContent = new Date().toISOString().slice(11,23) + ' ' + msg;
   el.appendChild(line);
   el.scrollTop = el.scrollHeight;
+}
+
+// ═══════════════ DEBUG MODE ═══════════════
+let _debugMode = false;
+
+function toggleDebugMode(on) {
+  _debugMode = on;
+  const btn   = document.getElementById('debug-toggle');
+  const track = document.getElementById('debug-toggle-track');
+  const thumb = document.getElementById('debug-toggle-thumb');
+  const overlay = document.getElementById('debug-overlay');
+  if (on) {
+    btn.style.display = 'block';
+    if (track) { track.style.background = 'var(--gold)'; }
+    if (thumb) { thumb.style.left = '23px'; thumb.style.background = '#111'; }
+    dbg('Debug mode enabled');
+  } else {
+    btn.style.display = 'none';
+    overlay.style.display = 'none';
+    if (track) { track.style.background = 'var(--bg3)'; }
+    if (thumb) { thumb.style.left = '3px'; thumb.style.background = 'var(--text3)'; }
+  }
+  try { localStorage.setItem('cv_debug_mode', on ? '1' : '0'); } catch(e) {}
+}
+
+function clearDebugLog() {
+  const el = document.getElementById('debug-overlay');
+  if (el) el.innerHTML = '';
+  dbg('Log cleared');
 }
 
 // ═══════════════ CONFIG STORAGE ═══════════════
@@ -1644,6 +1691,21 @@ try {
 } catch(e) {
   try { localStorage.removeItem(DB_KEY); } catch(e2) {}
 }
+
+// Restore debug mode preference
+try {
+  if (localStorage.getItem('cv_debug_mode') === '1') {
+    _debugMode = true;
+    const btn = document.getElementById('debug-toggle');
+    if (btn) btn.style.display = 'block';
+    const cb = document.getElementById('debug-toggle-setting');
+    if (cb) cb.checked = true;
+    const track = document.getElementById('debug-toggle-track');
+    const thumb = document.getElementById('debug-toggle-thumb');
+    if (track) track.style.background = 'var(--gold)';
+    if (thumb) { thumb.style.left = '23px'; thumb.style.background = '#111'; }
+  }
+} catch(e) {}
 
 // Boot: show PIN lock if Firebase is configured, else go straight to setup
 (function boot() {
