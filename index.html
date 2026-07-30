@@ -688,7 +688,7 @@ function renderGallery(filter = '') {
         <div class="card-body">
           <div class="card-make">${cam.make||'Unknown Make'}</div>
           <div class="card-model">${cam.model||'Unknown Model'}</div>
-          <div class="card-year">${cam.year||''}${cam.format?(cam.year?' · ':'')+cam.format:''}${cam.mount?((cam.year||cam.format||cam.country)?' · ':'')+cam.mount:''}${cam.country?((cam.year||cam.format||cam.mount)?' · ':'')+cam.country:''}</div>
+          <div class="card-year">${cam.year||''}${cam.format?(cam.year?' · ':'')+cam.format:''}${cam.type?((cam.year||cam.format||cam.country)?' · ':'')+cam.type:''}${cam.country?((cam.year||cam.format||cam.type)?' · ':'')+cam.country:''}</div>
         </div>
       </div>`;
     }).join('');
