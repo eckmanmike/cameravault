@@ -540,6 +540,13 @@ function connectFirebase(cfg) {
 
     setSyncState('syncing');
 
+    // Ensure auth is established before starting listeners —
+    // without this, /photos reads fail silently on mobile Chrome
+    // because Firebase security rules require auth != null
+    firebase.auth(app).signInAnonymously()
+      .catch(e => console.warn('Auth skipped:', e.message))
+      .finally(() => {
+
     // Listen to /cameras only — metadata, no photos (~2-3MB instead of ~142MB)
     dbRef.on('value', async snapshot => {
       try {
@@ -590,6 +597,8 @@ function connectFirebase(cfg) {
       console.error('Firebase read error:', err);
       setSyncState('error');
     });
+
+    }); // end auth.finally
 
     return true;
   } catch(e) {
