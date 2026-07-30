@@ -457,28 +457,63 @@ function setSyncState(state) {
 }
 
 // ═══════════════ FIREBASE ═══════════════
+// photosRef points to /photos node
+let photosRef = null;
+
 function connectFirebase(cfg) {
   cfg = cfg || loadCfg();
   if (!cfg || !cfg.databaseURL) return false;
   try {
-    // Initialize (may already be initialized)
     let app;
     try { app = firebase.app(); }
     catch { app = firebase.initializeApp(cfg); }
 
     firebaseDb = firebase.database(app);
-    dbRef = firebaseDb.ref('cameras');
+    dbRef      = firebaseDb.ref('cameras');
+    photosRef  = firebaseDb.ref('photos');
 
     setSyncState('syncing');
 
-    // Listen for real-time updates from Firebase → local
-    dbRef.on('value', snapshot => {
-      const data = snapshot.val();
-      cameras = data ? Object.values(data) : [];
-      saveLocalDB(cameras);
-      renderGallery();
-      setSyncState('synced');
-      isSynced = true;
+    // Listen to /cameras only — metadata, no photos (~2-3MB instead of ~142MB)
+    dbRef.on('value', async snapshot => {
+      try {
+        const data = snapshot.val();
+        const metaList = data ? Object.values(data) : [];
+        // Merge photos from IndexedDB cache or fetch individually from /photos
+        const resolved = await Promise.all(metaList.map(async meta => {
+          // Check IndexedDB cache first
+          try {
+            const cached = await PhotoCache.get(meta.id);
+            if (cached && cached.updated === meta.updated) {
+              // Cache hit — attach cached photos
+              return { ...meta, photos: cached.photos || [], photo: cached.photo || null };
+            }
+          } catch(e) { /* cache unavailable — fall through to Firebase fetch */ }
+          // Cache miss or stale — fetch this camera's photos from /photos/{id}
+          try {
+            const photoSnap = await photosRef.child(meta.id).get();
+            const photoData = photoSnap.val();
+            const photos = photoData?.photos || [];
+            const photo  = photoData?.photo  || null;
+            // Update cache
+            try {
+              await PhotoCache.put({ id: meta.id, updated: meta.updated, photos, photo, _full: {...meta, photos, photo} });
+            } catch(e) { /* cache write failed — not critical */ }
+            return { ...meta, photos, photo };
+          } catch(e) {
+            // /photos fetch failed — return metadata without photos
+            return { ...meta, photos: [], photo: null };
+          }
+        }));
+        cameras = resolved;
+        saveLocalDB(cameras.map(c => { const {photos,photo,...m}=c; return m; }));
+        renderGallery();
+        setSyncState('synced');
+        isSynced = true;
+      } catch(err) {
+        console.error('Sync error:', err);
+        setSyncState('error');
+      }
     }, err => {
       console.error('Firebase read error:', err);
       setSyncState('error');
@@ -493,10 +528,14 @@ function connectFirebase(cfg) {
 }
 
 async function pushToFirebase(camera) {
-  if (!dbRef) return;
+  if (!dbRef || !photosRef) return;
   setSyncState('syncing');
   try {
-    await dbRef.child(camera.id).set(camera);
+    const { photos, photo, ...meta } = camera;
+    await firebaseDb.ref().update({
+      [`/cameras/${camera.id}`]: meta,
+      [`/photos/${camera.id}`]: { id: camera.id, updated: camera.updated, photos: photos||[], photo: photo||null },
+    });
     setSyncState('synced');
   } catch(e) {
     setSyncState('error');
@@ -508,7 +547,12 @@ async function deleteFromFirebase(id) {
   if (!dbRef) return;
   setSyncState('syncing');
   try {
-    await dbRef.child(id).remove();
+    await firebaseDb.ref().update({
+      [`/cameras/${id}`]: null,
+      [`/photos/${id}`]: null,
+    });
+    // Also remove from IndexedDB cache
+    try { await PhotoCache.remove(id); } catch(e) {}
     setSyncState('synced');
   } catch(e) {
     setSyncState('error');
@@ -532,7 +576,13 @@ function connectFirebaseFromSetup() {
   const ok = connectFirebase(cfg);
   if (ok) {
     // Upload existing local cameras to Firebase
-    cameras.forEach(cam => dbRef.child(cam.id).set(cam));
+    cameras.forEach(cam => {
+    const { photos, photo, ...meta } = cam;
+    firebaseDb.ref().update({
+      [`/cameras/${cam.id}`]: meta,
+      [`/photos/${cam.id}`]: { id: cam.id, updated: cam.updated||Date.now(), photos: photos||[], photo: photo||null },
+    });
+  });
     showToast('Connected! Syncing…');
     showScreen('screen-gallery');
   } else {
@@ -632,7 +682,7 @@ function renderGallery(filter = '') {
         <div class="card-body">
           <div class="card-make">${cam.make||'Unknown Make'}</div>
           <div class="card-model">${cam.model||'Unknown Model'}</div>
-          <div class="card-year">${cam.year||''}${cam.format?(cam.year?' · ':'')+cam.format:''}${cam.type?((cam.year||cam.format||cam.country)?' · ':'')+cam.type:''}${cam.country?((cam.year||cam.format||cam.type)?' · ':'')+cam.country:''}</div>
+          <div class="card-year">${cam.year||''}${cam.format?(cam.year?' · ':'')+cam.format:''}${cam.mount?((cam.year||cam.format||cam.country)?' · ':'')+cam.mount:''}${cam.country?((cam.year||cam.format||cam.mount)?' · ':'')+cam.country:''}</div>
         </div>
       </div>`;
     }).join('');
@@ -816,13 +866,22 @@ async function saveCamera() {
     }
 
     try {
-      await dbRef.child(cam.id).set(cam);
+      const { photos, photo, ...meta } = cam;
+      await firebaseDb.ref().update({
+        [`/cameras/${cam.id}`]: meta,
+        [`/photos/${cam.id}`]: { id: cam.id, updated: cam.updated, photos: photos||[], photo: photo||null },
+      });
+      // Update IndexedDB cache with new record
+      try { await PhotoCache.put({ id: cam.id, updated: cam.updated, photos: photos||[], photo: photo||null, _full: cam }); } catch(e) {}
       setSyncState('synced');
     } catch(firebaseErr) {
       console.warn('Firebase write failed, retrying without photos:', firebaseErr.message);
-      const camNoPhoto = {...cam, photos: [], photo: null};
+      const { photos, photo, ...meta } = cam;
       try {
-        await dbRef.child(cam.id).set(camNoPhoto);
+        await firebaseDb.ref().update({
+          [`/cameras/${cam.id}`]: meta,
+          [`/photos/${cam.id}`]: { id: cam.id, updated: cam.updated, photos: [], photo: null },
+        });
         setSyncState('synced');
         showToast('Saved — photo stored locally only (too large for sync)');
         cam.photos = []; cam.photo = null;
