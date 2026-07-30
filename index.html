@@ -512,6 +512,7 @@ let waveInterval = null;
 let firebaseDb = null;
 let dbRef = null;
 let isSynced = false;
+let _initialSync = false;
 let viewMode = 'grid'; // 'grid' | 'list'
 let currentSort = 'added';
 
@@ -539,6 +540,7 @@ function connectFirebase(cfg) {
     photosRef  = firebaseDb.ref('photos');
 
     setSyncState('syncing');
+    _initialSync = true; // flag first onValue as needing full photo resolution
 
     // Ensure auth is established before starting listeners —
     // without this, /photos reads fail silently on mobile Chrome
@@ -553,9 +555,13 @@ function connectFirebase(cfg) {
         const data = snapshot.val();
         const metaList = data ? Object.values(data) : [];
 
-        // Build a fast lookup of what's already in memory (id → camera with photos)
+        // On first sync after boot, skip in-memory map — cameras[] is from
+        // localStorage (no photos) so matching timestamps would return photoless objects.
+        // On subsequent real-time updates, in-memory map is valid and safe to use.
+        const isFirst = _initialSync;
+        _initialSync = false;
         const inMemory = {};
-        cameras.forEach(c => { inMemory[c.id] = c; });
+        if (!isFirst) cameras.forEach(c => { inMemory[c.id] = c; });
 
         const resolved = await Promise.all(metaList.map(async meta => {
           // In-memory hit — same updated timestamp means nothing changed, reuse immediately
@@ -1556,8 +1562,7 @@ async function unlockApp() {
       document.getElementById('screen-loading').style.display = 'none';
     }
 
-    // Connect Firebase — when onValue fires it will re-render with fresh data
-    // and hide the loading screen if still showing
+    // Connect Firebase — onValue will fetch photos and re-render
     connectFirebase(savedCfg);
 
   } else {
