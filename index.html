@@ -173,6 +173,20 @@
     /* ── view toggle ── */
     .view-toggle{width:38px;height:38px;background:var(--bg3);border:1px solid rgba(255,255,255,.07);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:var(--text2);transition:background .15s}
     .view-toggle:active{background:var(--bg4)}
+    /* ── thumb-only view ── */
+    .gallery-thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+    .thumb-card{aspect-ratio:1;overflow:hidden;cursor:pointer;border-radius:6px;background:var(--bg2)}
+    .thumb-card img{width:100%;height:100%;object-fit:cover;display:block}
+    .thumb-card-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;background:var(--bg3)}
+    /* ── compact view ── */
+    .gallery-compact{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    .compact-card{cursor:pointer;border-radius:8px;background:var(--bg2);overflow:hidden;border:1px solid rgba(255,255,255,.05)}
+    .compact-card img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+    .compact-card-placeholder{width:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:20px;background:var(--bg3)}
+    .compact-body{padding:4px 5px 5px}
+    .compact-make{font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .compact-model{font-family:'Bebas Neue',sans-serif;font-size:11px;color:var(--text);letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+    .compact-meta{font-size:8px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
     /* ── list view ── */
     .camera-list{display:flex;flex-direction:column;gap:0}
     .list-item{display:flex;align-items:center;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .12s;gap:12px}
@@ -271,6 +285,8 @@
     <div class="gallery-stats" id="gallery-stats"></div>
     <div class="gallery-grid" id="gallery-grid"></div>
     <div class="camera-list" id="camera-list" style="display:none"></div>
+    <div class="gallery-thumbs" id="gallery-thumbs" style="display:none"></div>
+    <div class="gallery-compact" id="gallery-compact" style="display:none"></div>
   </div>
   <div class="empty-state" id="empty-state" style="display:none">
     <div class="empty-icon">📷</div>
@@ -575,7 +591,7 @@ let firebaseDb = null;
 let dbRef = null;
 let isSynced = false;
 let _initialSync = false;
-let viewMode = 'grid'; // 'grid' | 'list'
+let viewMode = 'grid'; // 'grid' | 'list' | 'thumbs' | 'compact'
 let currentSort = 'added';
 
 // ═══════════════ SYNC DOT ═══════════════
@@ -820,22 +836,27 @@ function renderGallery(filter = '') {
   empty.style.display = 'none';
   scroll.style.display = 'block';
   sortBar.style.display = viewMode === 'list' ? 'flex' : 'none';
+  if (typeof updateViewToggleBtn === 'function') updateViewToggleBtn();
   stats.textContent = `${filtered.length} camera${filtered.length !== 1 ? 's' : ''}${filter ? ' found' : ' in collection'}`;
 
   const sorted = sortCameras(filtered);
 
+  const thumbsEl  = document.getElementById('gallery-thumbs');
+  const compactEl = document.getElementById('gallery-compact');
+  grid.style.display      = 'none';
+  list.style.display      = 'none';
+  thumbsEl.style.display  = 'none';
+  compactEl.style.display = 'none';
+
   if (viewMode === 'grid') {
     grid.style.display = 'grid';
-    list.style.display = 'none';
     grid.innerHTML = sorted.map(cam => {
-      const cc = {Excellent:'cond-mint',Good:'cond-good',Fair:'cond-fair',Poor:'cond-poor'}[cam.condition] || '';
       const primaryPhoto = (cam.photos && cam.photos.length) ? cam.photos[0] : (cam.photo || null);
       const img = primaryPhoto
         ? `<img class="card-img" src="${primaryPhoto}" alt="${cam.model}" loading="lazy"/>`
         : `<div class="card-img-placeholder">📷</div>`;
       return `<div class="camera-card" onclick="openDetail('${cam.id}')">
         ${img}
-        ${cam.condition ? `<div class="card-condition ${cc}">${cam.condition}</div>` : ''}
         <div class="card-body">
           <div class="card-make">${cam.make||'Unknown Make'}</div>
           <div class="card-model">${cam.model||'Unknown Model'}</div>
@@ -843,8 +864,8 @@ function renderGallery(filter = '') {
         </div>
       </div>`;
     }).join('');
-  } else {
-    grid.style.display = 'none';
+
+  } else if (viewMode === 'list') {
     list.style.display = 'flex';
     list.innerHTML = sorted.map(cam => {
       const cc = {Excellent:'cond-mint',Good:'cond-good',Fair:'cond-fair',Poor:'cond-poor'}[cam.condition] || '';
@@ -862,8 +883,37 @@ function renderGallery(filter = '') {
         </div>
       </div>`;
     }).join('');
+
+  } else if (viewMode === 'thumbs') {
+    thumbsEl.style.display = 'grid';
+    thumbsEl.innerHTML = sorted.map(cam => {
+      const primaryPhoto = (cam.photos && cam.photos.length) ? cam.photos[0] : (cam.photo || null);
+      return `<div class="thumb-card" onclick="openDetail('${cam.id}')">
+        ${primaryPhoto
+          ? `<img src="${primaryPhoto}" alt="${cam.model}" loading="lazy"/>`
+          : `<div class="thumb-card-placeholder">📷</div>`}
+      </div>`;
+    }).join('');
+
+  } else if (viewMode === 'compact') {
+    compactEl.style.display = 'grid';
+    compactEl.innerHTML = sorted.map(cam => {
+      const primaryPhoto = (cam.photos && cam.photos.length) ? cam.photos[0] : (cam.photo || null);
+      const meta = [cam.year, cam.format].filter(Boolean).join(' · ');
+      return `<div class="compact-card" onclick="openDetail('${cam.id}')">
+        ${primaryPhoto
+          ? `<img src="${primaryPhoto}" alt="${cam.model}" loading="lazy"/>`
+          : `<div class="compact-card-placeholder">📷</div>`}
+        <div class="compact-body">
+          <div class="compact-make">${cam.make||''}</div>
+          <div class="compact-model">${cam.model||''}</div>
+          ${meta ? `<div class="compact-meta">${meta}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
   }
-}
+
+
 
 // ═══════════════ DETAIL ═══════════════
 function openDetail(id) {
@@ -1660,11 +1710,22 @@ function seedDemoData() {
 // Wire up connect button
 document.querySelector('.connect-btn').onclick=connectFirebaseFromSetup;
 
-// View toggle
+// View toggle — cycles: grid → list → thumbs → compact → grid
+const VIEW_MODES  = ['grid', 'list', 'thumbs', 'compact'];
+const VIEW_ICONS  = { grid:'▤', list:'⊞', thumbs:'⊟', compact:'⊜' };
+const VIEW_TITLES = { grid:'Standard grid', list:'List view', thumbs:'Thumbnails only', compact:'Compact 3-column' };
+
+function updateViewToggleBtn() {
+  const btn = document.getElementById('btn-view-toggle');
+  if (!btn) return;
+  btn.textContent = VIEW_ICONS[viewMode] || '▤';
+  btn.title = VIEW_TITLES[viewMode] || '';
+}
+
 document.getElementById('btn-view-toggle').onclick = function() {
-  viewMode = viewMode === 'grid' ? 'list' : 'grid';
-  this.textContent = viewMode === 'grid' ? '▤' : '⊞';
-  this.title = viewMode === 'grid' ? 'Switch to list view' : 'Switch to grid view';
+  const idx = VIEW_MODES.indexOf(viewMode);
+  viewMode = VIEW_MODES[(idx + 1) % VIEW_MODES.length];
+  updateViewToggleBtn();
   renderGallery(document.getElementById('search-input').value || '');
 };
 
