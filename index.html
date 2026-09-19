@@ -173,12 +173,10 @@
     /* ── view toggle ── */
     .view-toggle{width:38px;height:38px;background:var(--bg3);border:1px solid rgba(255,255,255,.07);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:var(--text2);transition:background .15s}
     .view-toggle:active{background:var(--bg4)}
-    /* ── thumb-only view ── */
     .gallery-thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
     .thumb-card{aspect-ratio:1;overflow:hidden;cursor:pointer;border-radius:6px;background:var(--bg2)}
     .thumb-card img{width:100%;height:100%;object-fit:cover;display:block}
     .thumb-card-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;background:var(--bg3)}
-    /* ── compact view ── */
     .gallery-compact{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
     .compact-card{cursor:pointer;border-radius:8px;background:var(--bg2);overflow:hidden;border:1px solid rgba(255,255,255,.05)}
     .compact-card img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
@@ -591,7 +589,7 @@ let firebaseDb = null;
 let dbRef = null;
 let isSynced = false;
 let _initialSync = false;
-let viewMode = 'grid'; // 'grid' | 'list' | 'thumbs' | 'compact'
+let viewMode = 'grid'; // 'grid' | 'list'
 let currentSort = 'added';
 
 // ═══════════════ SYNC DOT ═══════════════
@@ -836,7 +834,6 @@ function renderGallery(filter = '') {
   empty.style.display = 'none';
   scroll.style.display = 'block';
   sortBar.style.display = viewMode === 'list' ? 'flex' : 'none';
-  if (typeof updateViewToggleBtn === 'function') updateViewToggleBtn();
   stats.textContent = `${filtered.length} camera${filtered.length !== 1 ? 's' : ''}${filter ? ' found' : ' in collection'}`;
 
   const sorted = sortCameras(filtered);
@@ -845,8 +842,8 @@ function renderGallery(filter = '') {
   const compactEl = document.getElementById('gallery-compact');
   grid.style.display      = 'none';
   list.style.display      = 'none';
-  thumbsEl.style.display  = 'none';
-  compactEl.style.display = 'none';
+  if (thumbsEl)  thumbsEl.style.display  = 'none';
+  if (compactEl) compactEl.style.display = 'none';
 
   if (viewMode === 'grid') {
     grid.style.display = 'grid';
@@ -885,35 +882,38 @@ function renderGallery(filter = '') {
     }).join('');
 
   } else if (viewMode === 'thumbs') {
-    thumbsEl.style.display = 'grid';
-    thumbsEl.innerHTML = sorted.map(cam => {
-      const primaryPhoto = (cam.photos && cam.photos.length) ? cam.photos[0] : (cam.photo || null);
-      return `<div class="thumb-card" onclick="openDetail('${cam.id}')">
-        ${primaryPhoto
-          ? `<img src="${primaryPhoto}" alt="${cam.model}" loading="lazy"/>`
-          : `<div class="thumb-card-placeholder">📷</div>`}
-      </div>`;
-    }).join('');
+    if (thumbsEl) {
+      thumbsEl.style.display = 'grid';
+      thumbsEl.innerHTML = sorted.map(cam => {
+        const primaryPhoto = (cam.photos && cam.photos.length) ? cam.photos[0] : (cam.photo || null);
+        return `<div class="thumb-card" onclick="openDetail('${cam.id}')">
+          ${primaryPhoto
+            ? `<img src="${primaryPhoto}" alt="${cam.model}" loading="lazy"/>`
+            : `<div class="thumb-card-placeholder">📷</div>`}
+        </div>`;
+      }).join('');
+    }
 
   } else if (viewMode === 'compact') {
-    compactEl.style.display = 'grid';
-    compactEl.innerHTML = sorted.map(cam => {
-      const primaryPhoto = (cam.photos && cam.photos.length) ? cam.photos[0] : (cam.photo || null);
-      const meta = [cam.year, cam.format].filter(Boolean).join(' · ');
-      return `<div class="compact-card" onclick="openDetail('${cam.id}')">
-        ${primaryPhoto
-          ? `<img src="${primaryPhoto}" alt="${cam.model}" loading="lazy"/>`
-          : `<div class="compact-card-placeholder">📷</div>`}
-        <div class="compact-body">
-          <div class="compact-make">${cam.make||''}</div>
-          <div class="compact-model">${cam.model||''}</div>
-          ${meta ? `<div class="compact-meta">${meta}</div>` : ''}
-        </div>
-      </div>`;
-    }).join('');
+    if (compactEl) {
+      compactEl.style.display = 'grid';
+      compactEl.innerHTML = sorted.map(cam => {
+        const primaryPhoto = (cam.photos && cam.photos.length) ? cam.photos[0] : (cam.photo || null);
+        const meta = [cam.year, cam.format].filter(Boolean).join(' · ');
+        return `<div class="compact-card" onclick="openDetail('${cam.id}')">
+          ${primaryPhoto
+            ? `<img src="${primaryPhoto}" alt="${cam.model}" loading="lazy"/>`
+            : `<div class="compact-card-placeholder">📷</div>`}
+          <div class="compact-body">
+            <div class="compact-make">${cam.make||''}</div>
+            <div class="compact-model">${cam.model||''}</div>
+            ${meta ? `<div class="compact-meta">${meta}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+    }
   }
-
-
+}
 
 // ═══════════════ DETAIL ═══════════════
 function openDetail(id) {
@@ -1710,22 +1710,16 @@ function seedDemoData() {
 // Wire up connect button
 document.querySelector('.connect-btn').onclick=connectFirebaseFromSetup;
 
-// View toggle — cycles: grid → list → thumbs → compact → grid
+// View toggle — cycles: grid → list → thumbs → compact
 const VIEW_MODES  = ['grid', 'list', 'thumbs', 'compact'];
-const VIEW_ICONS  = { grid:'▤', list:'⊞', thumbs:'⊟', compact:'⊜' };
-const VIEW_TITLES = { grid:'Standard grid', list:'List view', thumbs:'Thumbnails only', compact:'Compact 3-column' };
-
-function updateViewToggleBtn() {
-  const btn = document.getElementById('btn-view-toggle');
-  if (!btn) return;
-  btn.textContent = VIEW_ICONS[viewMode] || '▤';
-  btn.title = VIEW_TITLES[viewMode] || '';
-}
+const VIEW_ICONS  = {grid:'▤', list:'⊞', thumbs:'⊟', compact:'⊜'};
+const VIEW_TITLES = {grid:'Standard grid', list:'List view', thumbs:'Thumbnails only', compact:'Compact 3-column'};
 
 document.getElementById('btn-view-toggle').onclick = function() {
   const idx = VIEW_MODES.indexOf(viewMode);
   viewMode = VIEW_MODES[(idx + 1) % VIEW_MODES.length];
-  updateViewToggleBtn();
+  this.textContent = VIEW_ICONS[viewMode] || '▤';
+  this.title = VIEW_TITLES[viewMode] || '';
   renderGallery(document.getElementById('search-input').value || '');
 };
 
